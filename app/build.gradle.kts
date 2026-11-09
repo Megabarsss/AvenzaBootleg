@@ -14,6 +14,10 @@ android {
         versionCode = 1
         versionName = "0.1"
     }
+    buildTypes {
+        // APK debug dibuat tidak "debuggable" agar Compose berjalan jauh lebih cepat dan hemat
+        debug { isDebuggable = false }
+    }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
