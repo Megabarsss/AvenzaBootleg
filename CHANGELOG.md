@@ -9,6 +9,7 @@ Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 - Logo aplikasi "Pengendalian Pemanfaatan Ruang Laut" sebagai ikon dan di layar awal.
 - Animasi halus pada panel bawah.
 - Build CI kini menampilkan pesan error kompilasi sebagai anotasi.
+- APK dinamai dengan versi (PdfMaps-v0.2.apk) dan tiap versi punya halaman Release sendiri.
 - Perbaikan: bentrok nama `setMode` yang membuat build gagal (diganti `changeMode`).
 
 ## v0.1
