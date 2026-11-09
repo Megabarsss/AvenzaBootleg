@@ -3,6 +3,9 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.3.1 (2026-11-09)
+- Teks tombol (menu bawah, bar atas, bar ukur, dialog proyek) selalu satu baris, tidak turun ke bawah.
+
 ## v0.3 (2026-11-09)
 - Impor Shapefile: pilih file ZIP berisi .shp (+ .dbf untuk nama dan atribut). Titik, garis, dan poligon. Hanya WGS84 (EPSG:4326); shapefile berproyeksi ditolak dengan pesan.
 - Edit fitur: warna per fitur, simbol titik (bulat, kotak, segitiga, belah ketupat, silang), tebal garis, pindah fitur ke layer lain.

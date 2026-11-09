@@ -270,7 +270,7 @@ fun MapApp() {
                         Text("${st.page + 1}/${st.pageCount}", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
                         TextButton(onClick = { st.currentMapId?.let { id -> scope.launch { st.openMap(id, st.page + 1) } } }, enabled = st.page < st.pageCount - 1) { Text("▶", color = MaterialTheme.colorScheme.onPrimary) }
                     }
-                    TextButton(onClick = { showLayers = true }) { Text("Layer", color = MaterialTheme.colorScheme.onPrimary) }
+                    TextButton(onClick = { showLayers = true }) { OneLine("Layer", MaterialTheme.colorScheme.onPrimary) }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
@@ -356,24 +356,24 @@ fun MapApp() {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.End) {
                             when {
                                 st.mode == Mode.CALIBRATE || st.mode == Mode.ADD_POINT || st.mode == Mode.MOVE -> {
-                                    TextButton(onClick = { st.mode = Mode.NONE; st.moveId = null }) { Text("Selesai") }
+                                    TextButton(onClick = { st.mode = Mode.NONE; st.moveId = null }) { OneLine("Selesai") }
                                 }
                                 st.mode == Mode.RULER -> {
-                                    TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { Text("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
-                                    TextButton(onClick = { st.ruler = emptyList() }, enabled = st.ruler.isNotEmpty()) { Text("Ulang") }
-                                    TextButton(onClick = { st.mode = Mode.NONE; st.ruler = emptyList() }) { Text("Selesai") }
+                                    TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { OneLine("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
+                                    TextButton(onClick = { st.ruler = emptyList() }, enabled = st.ruler.isNotEmpty()) { OneLine("Ulang") }
+                                    TextButton(onClick = { st.mode = Mode.NONE; st.ruler = emptyList() }) { OneLine("Selesai") }
                                 }
                                 st.mode == Mode.MEASURE_LINE || st.mode == Mode.MEASURE_AREA -> {
-                                    TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { Text("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
-                                    TextButton(onClick = { st.undoDraft() }, enabled = st.draft.isNotEmpty()) { Text("Undo") }
-                                    TextButton(onClick = { showSaveDraft = true }, enabled = st.canSaveDraft()) { Text("Simpan") }
-                                    TextButton(onClick = { st.mode = Mode.NONE; st.draft = emptyList() }) { Text("Batal") }
+                                    TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { OneLine("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
+                                    TextButton(onClick = { st.undoDraft() }, enabled = st.draft.isNotEmpty()) { OneLine("Undo") }
+                                    TextButton(onClick = { showSaveDraft = true }, enabled = st.canSaveDraft()) { OneLine("Simpan") }
+                                    TextButton(onClick = { st.mode = Mode.NONE; st.draft = emptyList() }) { OneLine("Batal") }
                                 }
                                 st.recording -> {
-                                    TextButton(onClick = { st.stopRecording() }) { Text("Stop & simpan") }
+                                    TextButton(onClick = { st.stopRecording() }) { OneLine("Stop & simpan") }
                                 }
                                 st.averaging -> {
-                                    TextButton(onClick = { st.cancelAveraging() }) { Text("Batal") }
+                                    TextButton(onClick = { st.cancelAveraging() }) { OneLine("Batal") }
                                 }
                             }
                         }
@@ -389,10 +389,10 @@ fun MapApp() {
                 shadowElevation = 8.dp,
             ) {
                 Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = { showMaps = true }, Modifier.weight(1f), contentPadding = tight) { Text("Peta") }
-                    TextButton(onClick = { showLayers = true }, Modifier.weight(1f), contentPadding = tight) { Text("Layer") }
+                    Button(onClick = { showMaps = true }, Modifier.weight(1f), contentPadding = tight) { OneLine("Peta") }
+                    TextButton(onClick = { showLayers = true }, Modifier.weight(1f), contentPadding = tight) { OneLine("Layer") }
                     Box(Modifier.weight(1f)) {
-                        TextButton(onClick = { toolsMenu = true }, Modifier.fillMaxWidth(), enabled = st.bitmap != null, contentPadding = tight) { Text("Alat ▴") }
+                        TextButton(onClick = { toolsMenu = true }, Modifier.fillMaxWidth(), enabled = st.bitmap != null, contentPadding = tight) { OneLine("Alat ▴") }
                         DropdownMenu(expanded = toolsMenu, onDismissRequest = { toolsMenu = false }) {
                             DropdownMenuItem(text = { Text("Format koordinat: $fmtLabel") }, onClick = { toolsMenu = false; st.cycleCoordFormat() })
             DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.changeMode(Mode.ADD_POINT) })
@@ -434,7 +434,7 @@ fun MapApp() {
                         }
                     }
                     Box(Modifier.weight(1f)) {
-                        TextButton(onClick = { dataMenu = true }, Modifier.fillMaxWidth(), contentPadding = tight) { Text("Data ▴") }
+                        TextButton(onClick = { dataMenu = true }, Modifier.fillMaxWidth(), contentPadding = tight) { OneLine("Data ▴") }
                         DropdownMenu(expanded = dataMenu, onDismissRequest = { dataMenu = false }) {
             DropdownMenuItem(text = { Text("Ekspor GPX") }, onClick = { dataMenu = false; gpxOut.launch("fitur.gpx") })
             DropdownMenuItem(text = { Text("Ekspor KML") }, onClick = { dataMenu = false; kmlOut.launch("fitur.kml") })
@@ -690,6 +690,11 @@ fun MapCanvas(st: AppState) {
 }
 
 @Composable
+fun OneLine(text: String, color: Color = Color.Unspecified, size: androidx.compose.ui.unit.TextUnit = 13.sp) {
+    Text(text, color = color, fontSize = size, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+}
+
+@Composable
 fun CompassButton(st: AppState, modifier: Modifier = Modifier) {
     val ang = st.northAngle() + st.rotation
     val measurer = rememberTextMeasurer()
@@ -773,8 +778,8 @@ fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onClo
                     ) {
                         RadioButton(p.id == st.activeProjectId, { scope.launch { st.switchProject(p.id) }; onClose() })
                         Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        TextButton(onClick = { renameId = p.id; renameText = p.name }) { Text("Ubah") }
-                        TextButton(onClick = { deleteId = p.id }) { Text("Hapus") }
+                        TextButton(onClick = { renameId = p.id; renameText = p.name }) { OneLine("Ubah") }
+                        TextButton(onClick = { deleteId = p.id }) { OneLine("Hapus") }
                     }
                 }
                 val verCtx = LocalContext.current
@@ -782,7 +787,7 @@ fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onClo
                 Text("PDF Maps v$ver", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(newName, { newName = it }, label = { Text("Nama proyek baru") }, singleLine = true, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { scope.launch { st.createProject(newName) }; onClose() }) { Text("Buat") }
+                    TextButton(onClick = { scope.launch { st.createProject(newName) }; onClose() }) { OneLine("Buat") }
                 }
             }
         },
