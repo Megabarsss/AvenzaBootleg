@@ -236,3 +236,77 @@ object Importer {
         return out
     }
 }
+
+/** Impor satu file atau ZIP berisi banyak KML / KMZ / SHP / GPX (juga ZIP di dalam ZIP). Satu file = satu layer. */
+object BundleImport {
+    class Result {
+        val layers = mutableListOf<Pair<String, List<RawFeature>>>()
+        val warnings = mutableListOf<String>()
+    }
+
+    private fun isZip(b: ByteArray) = b.size > 4 && b[0] == 'P'.code.toByte() && b[1] == 'K'.code.toByte()
+    private fun isShp(b: ByteArray) = b.size > 100 && b[0] == 0.toByte() && b[1] == 0.toByte() && b[2] == 0x27.toByte() && b[3] == 0x0A.toByte()
+    private fun baseOf(name: String) = name.substringAfterLast('/').substringBeforeLast('.')
+    private fun stem(path: String) = path.substringBeforeLast('.')
+
+    fun parse(name: String, bytes: ByteArray, container: String, depth: Int, res: Result) {
+        val base = baseOf(name).let { if (it.equals("doc", true) || it.isBlank()) container else it }
+        try {
+            when {
+                isZip(bytes) && depth < 3 -> parseZip(name, bytes, base, depth, res)
+                isShp(bytes) -> addShp(base, bytes, null, null, res)
+                else -> {
+                    val head = bytes.decodeToString(0, minOf(bytes.size, 2000))
+                    val raws = if (head.contains("<gpx")) Importer.parseGpx(java.io.ByteArrayInputStream(bytes))
+                    else Importer.parseKml(java.io.ByteArrayInputStream(bytes))
+                    if (raws.isNotEmpty()) res.layers += Pair(base, raws) else res.warnings += "$base: tidak ada fitur"
+                }
+            }
+        } catch (ex: Exception) {
+            res.warnings += "$base: ${ex.message}"
+        }
+    }
+
+    private fun addShp(base: String, shp: ByteArray, dbf: ByteArray?, prj: ByteArray?, res: Result) {
+        if (prj != null && prj.decodeToString().contains("PROJCS")) {
+            res.warnings += "$base: shapefile berproyeksi, ubah dulu ke WGS84"
+            return
+        }
+        val raws = ShpReader.parse(shp, dbf)
+        if (raws.isNotEmpty()) res.layers += Pair(base, raws) else res.warnings += "$base: tidak ada fitur"
+    }
+
+    private fun parseZip(name: String, bytes: ByteArray, base: String, depth: Int, res: Result) {
+        val entries = LinkedHashMap<String, ByteArray>()
+        java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(bytes)).use { z ->
+            var en = z.nextEntry
+            var n = 0
+            while (en != null && n < 1000) {
+                if (!en.isDirectory && !en.name.startsWith("__MACOSX") && !en.name.substringAfterLast('/').startsWith("._")) {
+                    entries[en.name] = z.readBytes(); n++
+                }
+                en = z.nextEntry
+            }
+        }
+        val isKmz = name.endsWith(".kmz", true)
+        if (isKmz) {
+            val k = entries.entries.firstOrNull { it.key.equals("doc.kml", true) } ?: entries.entries.firstOrNull { it.key.endsWith(".kml", true) }
+            if (k == null) { res.warnings += "$base: KMZ tanpa file .kml"; return }
+            parse(k.key, k.value, base, depth + 1, res)
+            return
+        }
+        for ((path, data) in entries) {
+            val l = path.lowercase()
+            when {
+                l.endsWith(".kml") || l.endsWith(".gpx") || l.endsWith(".kmz") || l.endsWith(".zip") -> parse(path, data, base, depth + 1, res)
+                l.endsWith(".shp") -> {
+                    val s = stem(path).lowercase()
+                    val dbf = entries.entries.firstOrNull { it.key.lowercase() == "$s.dbf" }?.value
+                    val prj = entries.entries.firstOrNull { it.key.lowercase() == "$s.prj" }?.value
+                    val lname = baseOf(path).let { if (it.equals("doc", true) || it.isBlank()) base else it }
+                    try { addShp(lname, data, dbf, prj, res) } catch (ex: Exception) { res.warnings += "$lname: ${ex.message}" }
+                }
+            }
+        }
+    }
+}

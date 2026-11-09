@@ -441,7 +441,7 @@ fun MapApp() {
             DropdownMenuItem(text = { Text("Ekspor KMZ") }, onClick = { dataMenu = false; kmzOut.launch("fitur.kmz") })
             DropdownMenuItem(text = { Text("Ekspor Shapefile (ZIP)") }, onClick = { dataMenu = false; shpOut.launch("fitur_shp.zip") })
             DropdownMenuItem(text = { Text("Ekspor CSV") }, onClick = { dataMenu = false; csvOut.launch("fitur.csv") })
-            DropdownMenuItem(text = { Text("Impor KML / KMZ / SHP (ZIP) / GPX") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
+            DropdownMenuItem(text = { Text("Impor KML / KMZ / SHP / GPX / ZIP") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
                         }
                     }
                 }

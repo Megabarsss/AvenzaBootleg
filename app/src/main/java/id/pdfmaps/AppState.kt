@@ -884,48 +884,21 @@ class AppState(val ctx: Context) {
     suspend fun importData(uri: Uri) {
         try {
             val bytes = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() } }
-            val isZip = bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
-            val isShp = bytes.size > 100 && bytes[0] == 0.toByte() && bytes[1] == 0.toByte() && bytes[2] == 0x27.toByte() && bytes[3] == 0x0A.toByte()
-            var shp: ByteArray? = if (isShp) bytes else null
-            var dbf: ByteArray? = null
-            var prj: ByteArray? = null
-            var kml: ByteArray? = null
-            if (isZip) {
-                ZipInputStream(ByteArrayInputStream(bytes)).use { z ->
-                    var en = z.nextEntry
-                    while (en != null) {
-                        val n = en.name
-                        if (n.endsWith(".kml", true) && (kml == null || n.equals("doc.kml", true))) kml = z.readBytes()
-                        else if (n.endsWith(".shp", true) && shp == null) shp = z.readBytes()
-                        else if (n.endsWith(".dbf", true) && dbf == null) dbf = z.readBytes()
-                        else if (n.endsWith(".prj", true) && prj == null) prj = z.readBytes()
-                        en = z.nextEntry
-                    }
-                }
+            val fname = displayName(uri) ?: "Impor"
+            val res = BundleImport.Result()
+            withContext(Dispatchers.Default) { BundleImport.parse(fname, bytes, fname.substringBeforeLast('.'), 0, res) }
+            if (res.layers.isEmpty()) {
+                status = "Tidak ada fitur yang bisa dibaca (KML, KMZ, GPX, SHP)" + (if (res.warnings.isNotEmpty()) ": " + res.warnings.first() else "")
+                return
             }
-            val raws: List<RawFeature>
-            if (shp != null) {
-                if (prj != null && prj!!.decodeToString().contains("PROJCS")) {
-                    status = "Shapefile berproyeksi (bukan WGS84). Ubah dulu ke WGS84 (EPSG:4326) di QGIS"; return
-                }
-                raws = ShpReader.parse(shp!!, dbf)
-            } else {
-                val data: ByteArray = if (isZip) (kml ?: run { status = "ZIP tidak berisi .kml atau .shp"; return }) else bytes
-                val head = data.decodeToString(0, min(data.size, 2000))
-                raws = if (head.contains("<gpx")) Importer.parseGpx(ByteArrayInputStream(data))
-                else Importer.parseKml(ByteArrayInputStream(data))
+            val base = store.layers.size
+            val newLayers = res.layers.mapIndexed { i, (nm, _) -> Layer(name = nm, color = LAYER_COLORS[(base + i) % LAYER_COLORS.size]) }
+            val newFeats = res.layers.flatMapIndexed { i, (_, raws) ->
+                raws.map { Feature(layerId = newLayers[i].id, type = it.type, name = it.name, notes = it.notes, pts = it.pts) }
             }
-            if (raws.isEmpty()) { status = "Tidak ada fitur yang bisa dibaca (KML, KMZ, GPX, atau SHP)"; return }
-            val layer = Layer(name = (displayName(uri) ?: "Impor").substringBeforeLast('.'), color = nextColor())
-            update { s ->
-                s.copy(
-                    layers = s.layers + layer,
-                    features = s.features + raws.map {
-                        Feature(layerId = layer.id, type = it.type, name = it.name, notes = it.notes, pts = it.pts)
-                    },
-                )
-            }
-            status = "Diimpor ${raws.size} fitur ke layer \"${layer.name}\""
+            update { s -> s.copy(layers = s.layers + newLayers, features = s.features + newFeats) }
+            val skip = if (res.warnings.isNotEmpty()) " · dilewati ${res.warnings.size}: ${res.warnings.first()}" else ""
+            status = "Diimpor ${newFeats.size} fitur ke ${newLayers.size} layer$skip"
         } catch (ex: Exception) {
             status = "Gagal impor: ${ex.message}"
         }
