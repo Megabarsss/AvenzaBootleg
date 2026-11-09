@@ -11,8 +11,17 @@ android {
         applicationId = "id.pdfmaps"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.5"
+        versionCode = 7
+        versionName = "0.6"
+    }
+    signingConfigs {
+        // Kunci tetap supaya tiap versi bisa dipasang di atas versi sebelumnya tanpa uninstall
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
     buildTypes {
         // APK debug dibuat tidak "debuggable" agar Compose berjalan jauh lebih cepat dan hemat
