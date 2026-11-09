@@ -43,3 +43,6 @@ Buka folder ini di Android Studio (Koala atau lebih baru), sync Gradle, lalu Run
 - Proyek: tiap proyek punya peta, layer, titik sendiri (ketuk nama proyek di bar atas).
 - Tata letak gaya Avenza: bar judul atas, tombol kompas & posisi saya di kanan, bar koordinat dan menu bawah.
 - Ikon aplikasi (adaptive icon) di app/src/main/res.
+
+
+Riwayat versi: lihat [CHANGELOG.md](CHANGELOG.md). Versi saat ini: 0.2.

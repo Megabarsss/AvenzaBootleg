@@ -743,6 +743,9 @@ fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onClo
                         TextButton(onClick = { deleteId = p.id }) { Text("Hapus") }
                     }
                 }
+                val verCtx = LocalContext.current
+                val ver = remember { try { verCtx.packageManager.getPackageInfo(verCtx.packageName, 0).versionName ?: "" } catch (e: Exception) { "" } }
+                Text("PDF Maps v$ver", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(newName, { newName = it }, label = { Text("Nama proyek baru") }, singleLine = true, modifier = Modifier.weight(1f))
                     TextButton(onClick = { scope.launch { st.createProject(newName) }; onClose() }) { Text("Buat") }
