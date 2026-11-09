@@ -675,14 +675,32 @@ fun MapCanvas(st: AppState) {
                 st.navFeature()?.let { nf ->
                     drawLine(Color(0xFFD81B60), c, t.off(st.target(nf)), strokeWidth = 3f / z)
                 }
-                drawCircle(Color(0x442196F3), r * 2.5f, c)
-                drawCircle(Color.White, r * 1.3f, c)
-                drawCircle(Color(0xFF2196F3), r, c)
-                st.heading?.let { h ->
-                    val a = Math.toRadians((h + nAng).toDouble())
-                    val end = Offset(c.x + (sin(a) * r * 4).toFloat(), c.y - (cos(a) * r * 4).toFloat())
-                    drawLine(Color(0xFF2196F3), c, end, strokeWidth = 3f / z)
+                val blue = Color(0xFF1A73E8)
+                // lingkaran akurasi
+                val accPx = (c - t.off(Pt(l.latitude + l.accuracy / 111320.0, l.longitude))).getDistance()
+                if (accPx > r * 1.8f) {
+                    drawCircle(blue.copy(alpha = 0.14f), accPx, c)
+                    drawCircle(blue.copy(alpha = 0.45f), accPx, c, style = Stroke(1.5f / z))
                 }
+                // kerucut arah hadap
+                st.heading?.let { h ->
+                    val a0 = Math.toRadians((h + nAng).toDouble())
+                    val half = Math.toRadians(32.0)
+                    val rad = r * 6f
+                    val cone = Path().apply {
+                        moveTo(c.x, c.y)
+                        for (i in 0..8) {
+                            val ang = a0 - half + (2 * half) * i / 8.0
+                            lineTo(c.x + (sin(ang) * rad).toFloat(), c.y - (cos(ang) * rad).toFloat())
+                        }
+                        close()
+                    }
+                    drawPath(cone, blue.copy(alpha = 0.30f))
+                }
+                // titik posisi: cincin bayangan, putih, biru
+                drawCircle(Color(0x33000000), r * 1.75f, c)
+                drawCircle(Color.White, r * 1.55f, c)
+                drawCircle(blue, r * 1.1f, c)
             }
         }
     }

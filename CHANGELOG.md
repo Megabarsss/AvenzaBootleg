@@ -3,6 +3,9 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.5 (2026-11-09)
+- Titik posisi GPS baru: titik biru dengan cincin putih dan bayangan, lingkaran akurasi sesuai ketelitian GPS, dan kerucut arah hadap (menggantikan garis lurus).
+
 ## v0.4 (2026-11-09)
 - Impor ZIP berisi satu atau banyak file KML, KMZ, SHP, dan GPX (termasuk ZIP di dalam ZIP, dan subfolder). Tiap file menjadi satu layer bernama sesuai file. File yang gagal dilewati dan dilaporkan, yang lain tetap masuk.
 - Menu Data: "Impor KML / KMZ / SHP / GPX / ZIP".
