@@ -37,3 +37,9 @@ Buka folder ini di Android Studio (Koala atau lebih baru), sync Gradle, lalu Run
 - Putar peta dengan dua jari; tombol kompas di pojok kanan atas menunjuk utara sejati dan bila diketuk mengembalikan utara ke atas (Alat → Putar peta: terkunci untuk mematikan rotasi)
 - Penggaris 2 titik (jarak + arah, dengan tanda skala) dan skala peta di pojok kiri bawah
 - Satuan ukur dapat diganti: otomatis, meter, kilometer, kaki, mil, mil laut (berlaku untuk jarak, luas, penggaris, skala, navigasi)
+
+
+## Pembaruan
+- Proyek: tiap proyek punya peta, layer, titik sendiri (ketuk nama proyek di bar atas).
+- Tata letak gaya Avenza: bar judul atas, tombol kompas & posisi saya di kanan, bar koordinat dan menu bawah.
+- Ikon aplikasi (adaptive icon) di app/src/main/res.

@@ -7,23 +7,72 @@ import java.io.File
 
 /** Penyimpanan permanen sederhana: satu file JSON di folder internal app. */
 object Storage {
-    private fun file(ctx: Context) = File(ctx.filesDir, "store.json")
+    private fun indexFile(ctx: Context) = File(ctx.filesDir, "projects.json")
+    private fun file(ctx: Context, pid: String) = File(ctx.filesDir, "store_$pid.json")
 
-    fun load(ctx: Context): Store = try {
-        val f = file(ctx)
+    /** Daftar proyek. Data lama (store.json) otomatis menjadi "Proyek 1". */
+    fun loadIndex(ctx: Context): ProjectIndex {
+        try {
+            val f = indexFile(ctx)
+            if (f.exists()) {
+                val o = JSONObject(f.readText())
+                val arr = o.getJSONArray("projects")
+                val list = (0 until arr.length()).map {
+                    val p = arr.getJSONObject(it)
+                    Project(p.getString("id"), p.getString("name"))
+                }
+                if (list.isNotEmpty()) {
+                    val a = o.optString("active", list[0].id)
+                    return ProjectIndex(if (list.any { it.id == a }) a else list[0].id, list)
+                }
+            }
+        } catch (_: Exception) {
+        }
+        val p = Project("p1", "Proyek 1")
+        val old = File(ctx.filesDir, "store.json")
+        try {
+            if (old.exists() && !file(ctx, p.id).exists()) old.copyTo(file(ctx, p.id), overwrite = true)
+        } catch (_: Exception) {
+        }
+        val idx = ProjectIndex(p.id, listOf(p))
+        saveIndex(ctx, idx)
+        return idx
+    }
+
+    fun saveIndex(ctx: Context, idx: ProjectIndex) {
+        try {
+            val o = JSONObject()
+            o.put("active", idx.active)
+            val arr = JSONArray()
+            idx.projects.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name)) }
+            o.put("projects", arr)
+            val tmp = File(ctx.filesDir, "projects.json.tmp")
+            tmp.writeText(o.toString())
+            tmp.copyTo(indexFile(ctx), overwrite = true)
+            tmp.delete()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun load(ctx: Context, pid: String): Store = try {
+        val f = file(ctx, pid)
         if (!f.exists()) Store().ensured() else parse(JSONObject(f.readText())).ensured()
     } catch (e: Exception) {
         Store().ensured()
     }
 
-    fun save(ctx: Context, s: Store) {
+    fun save(ctx: Context, pid: String, s: Store) {
         try {
-            val tmp = File(ctx.filesDir, "store.json.tmp")
+            val tmp = File(ctx.filesDir, "store_$pid.json.tmp")
             tmp.writeText(toJson(s).toString())
-            tmp.copyTo(file(ctx), overwrite = true)
+            tmp.copyTo(file(ctx, pid), overwrite = true)
             tmp.delete()
         } catch (_: Exception) {
         }
+    }
+
+    fun delete(ctx: Context, pid: String) {
+        try { file(ctx, pid).delete() } catch (_: Exception) {}
     }
 
     private fun ptJson(p: Pt) = JSONArray(

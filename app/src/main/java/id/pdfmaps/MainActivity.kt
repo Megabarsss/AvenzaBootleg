@@ -29,6 +29,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -80,6 +83,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -121,6 +125,7 @@ fun MapApp() {
     var showUrl by remember { mutableStateOf(false) }
     var showBt by remember { mutableStateOf(false) }
     var showUnit by remember { mutableStateOf(false) }
+    var showProjects by remember { mutableStateOf(false) }
     var showSaveDraft by remember { mutableStateOf(false) }
     var toolsMenu by remember { mutableStateOf(false) }
     var dataMenu by remember { mutableStateOf(false) }
@@ -208,180 +213,19 @@ fun MapApp() {
     }
 
     val fmtLabel = when (st.store.coordFormat) { 1 -> "DMS"; 2 -> "UTM"; 3 -> "MGRS"; else -> "DD" }
+    val l = st.loc
+    val ctxBar = st.mode != Mode.NONE || st.recording || st.averaging
+    val panelColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+    val tight = PaddingValues(horizontal = 4.dp, vertical = 12.dp)
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
-        // ---------- Toolbar ----------
-        Surface(
-            Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
-            tonalElevation = 3.dp,
-        ) {
-        Column {
-        Text(
-            "PDF Maps",
-            Modifier.padding(start = 16.dp, top = 10.dp),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Button(onClick = { showMaps = true }) { Text("Peta") }
-            FilledTonalButton(onClick = { showLayers = true }) { Text("Layer") }
-            Box {
-                FilledTonalButton(onClick = { toolsMenu = true }, enabled = st.bitmap != null) { Text("Alat ▾") }
-                DropdownMenu(expanded = toolsMenu, onDismissRequest = { toolsMenu = false }) {
-                    DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.setMode(Mode.ADD_POINT) })
-                    DropdownMenuItem(text = { Text("Tambah titik di posisi saya") }, onClick = { toolsMenu = false; st.pointHere() })
-                    DropdownMenuItem(text = { Text("Rata-rata GPS (20 fix)") }, onClick = { toolsMenu = false; st.startAveraging() })
-                    DropdownMenuItem(text = { Text("Ukur jarak / gambar garis") }, onClick = { toolsMenu = false; st.setMode(Mode.MEASURE_LINE) })
-                    DropdownMenuItem(text = { Text("Ukur luas / gambar area") }, onClick = { toolsMenu = false; st.setMode(Mode.MEASURE_AREA) })
-                    DropdownMenuItem(text = { Text("Penggaris (2 titik)") }, onClick = { toolsMenu = false; st.setMode(Mode.RULER) })
-                    DropdownMenuItem(text = { Text("Satuan ukur: ${GeoMath.UNIT_NAMES[st.store.unit]}") }, onClick = { toolsMenu = false; showUnit = true })
-                    DropdownMenuItem(
-                        text = { Text(if (st.rotateLocked) "Putar peta: terkunci" else "Putar peta: bebas") },
-                        onClick = { toolsMenu = false; st.rotateLocked = !st.rotateLocked },
-                    )
-                    DropdownMenuItem(text = { Text("Utara ke atas") }, onClick = { toolsMenu = false; st.resetNorth() })
-                    DropdownMenuItem(
-                        text = { Text(if (st.recording) "Stop rekam track" else "Rekam track GPS") },
-                        onClick = { toolsMenu = false; if (st.recording) st.stopRecording() else st.startRecording() },
-                    )
-                    DropdownMenuItem(text = { Text("Foto bergeotag → titik") }, onClick = { toolsMenu = false; photoPicker.launch(arrayOf("image/*")) })
-                    DropdownMenuItem(text = { Text("Pusatkan ke posisi saya") }, onClick = { toolsMenu = false; st.centerOnMe() })
-                    DropdownMenuItem(
-                        text = { Text("GPS Bluetooth…") },
-                        onClick = {
-                            toolsMenu = false
-                            if (Build.VERSION.SDK_INT >= 31 &&
-                                ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-                            ) btPermLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT) else showBt = true
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (st.store.bgGeofence) "Geofence di latar belakang: aktif" else "Geofence di latar belakang: mati") },
-                        onClick = { toolsMenu = false; st.toggleBgGeofence() },
-                    )
-                    DropdownMenuItem(text = { Text("Kalibrasi manual") }, onClick = { toolsMenu = false; st.setMode(Mode.CALIBRATE) })
-                    DropdownMenuItem(text = { Text("Hapus kalibrasi manual") }, onClick = { toolsMenu = false; st.setManual(emptyList()) })
-                    if (st.navTarget != null) {
-                        DropdownMenuItem(text = { Text("Berhenti navigasi") }, onClick = { toolsMenu = false; st.navTarget = null })
-                    }
-                }
-            }
-            Box {
-                FilledTonalButton(onClick = { dataMenu = true }) { Text("Data ▾") }
-                DropdownMenu(expanded = dataMenu, onDismissRequest = { dataMenu = false }) {
-                    DropdownMenuItem(text = { Text("Ekspor GPX") }, onClick = { dataMenu = false; gpxOut.launch("fitur.gpx") })
-                    DropdownMenuItem(text = { Text("Ekspor KML") }, onClick = { dataMenu = false; kmlOut.launch("fitur.kml") })
-                    DropdownMenuItem(text = { Text("Ekspor KMZ") }, onClick = { dataMenu = false; kmzOut.launch("fitur.kmz") })
-                    DropdownMenuItem(text = { Text("Ekspor Shapefile (ZIP)") }, onClick = { dataMenu = false; shpOut.launch("fitur_shp.zip") })
-                    DropdownMenuItem(text = { Text("Ekspor CSV") }, onClick = { dataMenu = false; csvOut.launch("fitur.csv") })
-                    DropdownMenuItem(text = { Text("Impor KML / KMZ / GPX") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
-                }
-            }
-            FilledTonalButton(onClick = { st.cycleCoordFormat() }) { Text("Koord: $fmtLabel") }
-            if (st.pageCount > 1) {
-                TextButton(onClick = { st.currentMapId?.let { id -> scope.launch { st.openMap(id, st.page - 1) } } }, enabled = st.page > 0) { Text("◀") }
-                Text("${st.page + 1}/${st.pageCount}")
-                TextButton(onClick = { st.currentMapId?.let { id -> scope.launch { st.openMap(id, st.page + 1) } } }, enabled = st.page < st.pageCount - 1) { Text("▶") }
-            }
-        }
-        }
-        }
-
-        // ---------- Status ----------
-        val l = st.loc
-        Surface(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = RoundedCornerShape(14.dp),
-        ) {
-            Text(
-                buildString {
-                    append(st.status)
-                    if (l != null) append("\nGPS: ${GeoMath.fmtCoord(l.latitude, l.longitude, st.store.coordFormat)} (±%.0f m)".format(l.accuracy))
-                    st.navInfo()?.let { append("\n$it") }
-                },
-                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-        }
-
-        // ---------- Peringatan geofence ----------
-        st.alert?.let { msg ->
-            Surface(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                color = MaterialTheme.colorScheme.errorContainer,
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔔 $msg", Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Medium)
-                    TextButton(onClick = { st.alert = null }) { Text("OK") }
-                }
-            }
-        }
-
-        // ---------- Bar kontekstual ----------
-        val ctxBar = st.mode != Mode.NONE || st.recording || st.averaging
-        if (ctxBar) {
-            Surface(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                shape = RoundedCornerShape(14.dp),
-            ) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                when {
-                    st.mode == Mode.CALIBRATE -> {
-                        Text("Kalibrasi: tap titik di peta (manual: ${st.manualPoints.size}, min 3)")
-                        TextButton(onClick = { st.mode = Mode.NONE }) { Text("Selesai") }
-                    }
-                    st.mode == Mode.ADD_POINT -> {
-                        Text("Tap peta untuk menaruh titik")
-                        TextButton(onClick = { st.mode = Mode.NONE }) { Text("Selesai") }
-                    }
-                    st.mode == Mode.RULER -> {
-                        Text(st.rulerInfo())
-                        TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { Text("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
-                        TextButton(onClick = { st.ruler = emptyList() }, enabled = st.ruler.isNotEmpty()) { Text("Ulang") }
-                        TextButton(onClick = { st.mode = Mode.NONE; st.ruler = emptyList() }) { Text("Selesai") }
-                    }
-                    st.mode == Mode.MEASURE_LINE || st.mode == Mode.MEASURE_AREA -> {
-                        Text(st.draftInfo().ifBlank { "Tap peta untuk menambah titik" })
-                        TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { Text("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
-                        TextButton(onClick = { st.undoDraft() }, enabled = st.draft.isNotEmpty()) { Text("Undo") }
-                        TextButton(onClick = { showSaveDraft = true }, enabled = st.canSaveDraft()) { Text("Simpan") }
-                        TextButton(onClick = { st.mode = Mode.NONE; st.draft = emptyList() }) { Text("Batal") }
-                    }
-                    st.recording -> {
-                        Text("Rekam: " + GeoMath.fmtDist(GeoMath.length(st.trackPts)) + " · ${st.trackPts.size} titik")
-                        TextButton(onClick = { st.stopRecording() }) { Text("Stop & simpan") }
-                    }
-                    st.averaging -> {
-                        Text("Rata-rata GPS: ${st.avgFixes.size}/20")
-                        TextButton(onClick = { st.cancelAveraging() }) { Text("Batal") }
-                    }
-                }
-            }
-            }
-        }
-
-        // ---------- Peta ----------
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
+        // ---------- Peta (layar penuh) ----------
         if (st.bitmap != null) {
             MapCanvas(st)
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                    Text("🗺️", style = MaterialTheme.typography.displayLarge)
+                    Image(painterResource(R.drawable.logo_app), contentDescription = "Logo", modifier = Modifier.size(160.dp))
                     Text(
                         "Belum ada peta",
                         Modifier.padding(top = 12.dp),
@@ -395,6 +239,209 @@ fun MapApp() {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(onClick = { showMaps = true }) { Text("Impor peta") }
+                }
+            }
+        }
+
+        // ---------- Atas: bar judul gaya Avenza ----------
+        Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+            Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary, shadowElevation = 6.dp) {
+                Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { showMaps = true }) { Text("☰", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge) }
+                    Column(Modifier.weight(1f).clickable { showProjects = true }) {
+                        Text(
+                            st.currentMap?.name ?: "PDF Maps",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            st.activeProject.name + "  ▾",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                            maxLines = 1,
+                        )
+                    }
+                    if (st.pageCount > 1) {
+                        TextButton(onClick = { st.currentMapId?.let { id -> scope.launch { st.openMap(id, st.page - 1) } } }, enabled = st.page > 0) { Text("◀", color = MaterialTheme.colorScheme.onPrimary) }
+                        Text("${st.page + 1}/${st.pageCount}", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
+                        TextButton(onClick = { st.currentMapId?.let { id -> scope.launch { st.openMap(id, st.page + 1) } } }, enabled = st.page < st.pageCount - 1) { Text("▶", color = MaterialTheme.colorScheme.onPrimary) }
+                    }
+                    TextButton(onClick = { showLayers = true }) { Text("Layer", color = MaterialTheme.colorScheme.onPrimary) }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (st.status.isNotBlank() && st.bitmap == null || st.navInfo() != null) {
+                        Surface(
+                            Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
+                            shape = RoundedCornerShape(14.dp),
+                            shadowElevation = 3.dp,
+                        ) {
+                            Text(
+                                buildString { append(st.status); st.navInfo()?.let { append("\n$it") } },
+                                Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
+                    st.alert?.let { msg ->
+                        Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(14.dp), shadowElevation = 3.dp) {
+                            Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("🔔 $msg", Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Medium)
+                                TextButton(onClick = { st.alert = null }) { Text("OK") }
+                            }
+                        }
+                    }
+                }
+                if (st.bitmap != null) {
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CompassButton(st)
+                        Surface(
+                            Modifier.size(48.dp).clickable { st.centerOnMe() },
+                            shape = CircleShape,
+                            color = panelColor,
+                            shadowElevation = 6.dp,
+                        ) { Box(contentAlignment = Alignment.Center) { Text("◎", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) } }
+                    }
+                }
+            }
+        }
+
+        // ---------- Bawah: skala, bar konteks, menu utama ----------
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp).animateContentSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(Modifier.fillMaxWidth()) { ScaleBar(st, Modifier.align(Alignment.CenterStart)) }
+            if (l != null) {
+                Surface(Modifier.fillMaxWidth().clickable { st.cycleCoordFormat() }, shape = RoundedCornerShape(14.dp), color = panelColor, shadowElevation = 4.dp) {
+                    Text(
+                        "$fmtLabel  ${GeoMath.fmtCoord(l.latitude, l.longitude, st.store.coordFormat)}  ±%.0f m".format(l.accuracy),
+                        Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
+
+            if (ctxBar) {
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 6.dp,
+                ) {
+                    Column(Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 2.dp)) {
+                        Text(
+                            when {
+                                st.mode == Mode.CALIBRATE -> "Kalibrasi: tap titik di peta (manual: ${st.manualPoints.size}, min 3)"
+                                st.mode == Mode.ADD_POINT -> "Tap peta untuk menaruh titik"
+                                st.mode == Mode.RULER -> st.rulerInfo()
+                                st.mode == Mode.MEASURE_LINE || st.mode == Mode.MEASURE_AREA ->
+                                    st.draftInfo().ifBlank { "Tap peta untuk menambah titik" }
+                                st.recording -> "Rekam: " + GeoMath.fmtDist(GeoMath.length(st.trackPts)) + " · ${st.trackPts.size} titik"
+                                st.averaging -> "Rata-rata GPS: ${st.avgFixes.size}/20"
+                                else -> ""
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.End) {
+                            when {
+                                st.mode == Mode.CALIBRATE || st.mode == Mode.ADD_POINT -> {
+                                    TextButton(onClick = { st.mode = Mode.NONE }) { Text("Selesai") }
+                                }
+                                st.mode == Mode.RULER -> {
+                                    TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { Text("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
+                                    TextButton(onClick = { st.ruler = emptyList() }, enabled = st.ruler.isNotEmpty()) { Text("Ulang") }
+                                    TextButton(onClick = { st.mode = Mode.NONE; st.ruler = emptyList() }) { Text("Selesai") }
+                                }
+                                st.mode == Mode.MEASURE_LINE || st.mode == Mode.MEASURE_AREA -> {
+                                    TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { Text("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
+                                    TextButton(onClick = { st.undoDraft() }, enabled = st.draft.isNotEmpty()) { Text("Undo") }
+                                    TextButton(onClick = { showSaveDraft = true }, enabled = st.canSaveDraft()) { Text("Simpan") }
+                                    TextButton(onClick = { st.mode = Mode.NONE; st.draft = emptyList() }) { Text("Batal") }
+                                }
+                                st.recording -> {
+                                    TextButton(onClick = { st.stopRecording() }) { Text("Stop & simpan") }
+                                }
+                                st.averaging -> {
+                                    TextButton(onClick = { st.cancelAveraging() }) { Text("Batal") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Surface(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = panelColor,
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp,
+            ) {
+                Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(onClick = { showMaps = true }, Modifier.weight(1f), contentPadding = tight) { Text("Peta") }
+                    TextButton(onClick = { showLayers = true }, Modifier.weight(1f), contentPadding = tight) { Text("Layer") }
+                    Box(Modifier.weight(1f)) {
+                        TextButton(onClick = { toolsMenu = true }, Modifier.fillMaxWidth(), enabled = st.bitmap != null, contentPadding = tight) { Text("Alat ▴") }
+                        DropdownMenu(expanded = toolsMenu, onDismissRequest = { toolsMenu = false }) {
+                            DropdownMenuItem(text = { Text("Format koordinat: $fmtLabel") }, onClick = { toolsMenu = false; st.cycleCoordFormat() })
+            DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.setMode(Mode.ADD_POINT) })
+            DropdownMenuItem(text = { Text("Tambah titik di posisi saya") }, onClick = { toolsMenu = false; st.pointHere() })
+            DropdownMenuItem(text = { Text("Rata-rata GPS (20 fix)") }, onClick = { toolsMenu = false; st.startAveraging() })
+            DropdownMenuItem(text = { Text("Ukur jarak / gambar garis") }, onClick = { toolsMenu = false; st.setMode(Mode.MEASURE_LINE) })
+            DropdownMenuItem(text = { Text("Ukur luas / gambar area") }, onClick = { toolsMenu = false; st.setMode(Mode.MEASURE_AREA) })
+            DropdownMenuItem(text = { Text("Penggaris (2 titik)") }, onClick = { toolsMenu = false; st.setMode(Mode.RULER) })
+            DropdownMenuItem(text = { Text("Satuan ukur: ${GeoMath.UNIT_NAMES[st.store.unit]}") }, onClick = { toolsMenu = false; showUnit = true })
+            DropdownMenuItem(
+                text = { Text(if (st.rotateLocked) "Putar peta: terkunci" else "Putar peta: bebas") },
+                onClick = { toolsMenu = false; st.toggleRotateLock() },
+            )
+            DropdownMenuItem(text = { Text("Utara ke atas") }, onClick = { toolsMenu = false; st.resetNorth() })
+            DropdownMenuItem(
+                text = { Text(if (st.recording) "Stop rekam track" else "Rekam track GPS") },
+                onClick = { toolsMenu = false; if (st.recording) st.stopRecording() else st.startRecording() },
+            )
+            DropdownMenuItem(text = { Text("Foto bergeotag → titik") }, onClick = { toolsMenu = false; photoPicker.launch(arrayOf("image/*")) })
+            DropdownMenuItem(text = { Text("Pusatkan ke posisi saya") }, onClick = { toolsMenu = false; st.centerOnMe() })
+            DropdownMenuItem(
+                text = { Text("GPS Bluetooth…") },
+                onClick = {
+                    toolsMenu = false
+                    if (Build.VERSION.SDK_INT >= 31 &&
+                        ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+                    ) btPermLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT) else showBt = true
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(if (st.store.bgGeofence) "Geofence di latar belakang: aktif" else "Geofence di latar belakang: mati") },
+                onClick = { toolsMenu = false; st.toggleBgGeofence() },
+            )
+            DropdownMenuItem(text = { Text("Kalibrasi manual") }, onClick = { toolsMenu = false; st.setMode(Mode.CALIBRATE) })
+            DropdownMenuItem(text = { Text("Hapus kalibrasi manual") }, onClick = { toolsMenu = false; st.setManual(emptyList()) })
+            if (st.navTarget != null) {
+                DropdownMenuItem(text = { Text("Berhenti navigasi") }, onClick = { toolsMenu = false; st.navTarget = null })
+            }
+                        }
+                    }
+                    Box(Modifier.weight(1f)) {
+                        TextButton(onClick = { dataMenu = true }, Modifier.fillMaxWidth(), contentPadding = tight) { Text("Data ▴") }
+                        DropdownMenu(expanded = dataMenu, onDismissRequest = { dataMenu = false }) {
+            DropdownMenuItem(text = { Text("Ekspor GPX") }, onClick = { dataMenu = false; gpxOut.launch("fitur.gpx") })
+            DropdownMenuItem(text = { Text("Ekspor KML") }, onClick = { dataMenu = false; kmlOut.launch("fitur.kml") })
+            DropdownMenuItem(text = { Text("Ekspor KMZ") }, onClick = { dataMenu = false; kmzOut.launch("fitur.kmz") })
+            DropdownMenuItem(text = { Text("Ekspor Shapefile (ZIP)") }, onClick = { dataMenu = false; shpOut.launch("fitur_shp.zip") })
+            DropdownMenuItem(text = { Text("Ekspor CSV") }, onClick = { dataMenu = false; csvOut.launch("fitur.csv") })
+            DropdownMenuItem(text = { Text("Impor KML / KMZ / GPX") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
+                        }
+                    }
                 }
             }
         }
@@ -414,6 +461,7 @@ fun MapApp() {
     if (showLayers) LayersDialog(st) { showLayers = false }
     if (showBt) BtDialog(st) { showBt = false }
     if (showUnit) UnitDialog(st) { showUnit = false }
+    if (showProjects) ProjectsDialog(st, scope) { showProjects = false }
     if (showUrl) {
         TextInputDialog("Impor dari URL", "https://…/peta.pdf", "", { u ->
             showUrl = false
@@ -604,8 +652,6 @@ fun MapCanvas(st: AppState) {
             }
         }
     }
-    CompassButton(st, Modifier.align(Alignment.TopEnd).padding(12.dp))
-    ScaleBar(st, Modifier.align(Alignment.BottomStart).padding(12.dp))
     }
 }
 
@@ -667,6 +713,56 @@ fun ScaleBar(st: AppState, modifier: Modifier = Modifier) {
             Text(label, style = MaterialTheme.typography.labelSmall)
             Box(Modifier.width(widthDp.dp).height(3.dp).background(MaterialTheme.colorScheme.onSurface))
         }
+    }
+}
+
+@Composable
+fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onClose: () -> Unit) {
+    var newName by remember { mutableStateOf("") }
+    var renameId by remember { mutableStateOf<String?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var deleteId by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Proyek") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "Setiap proyek punya peta (PDF), layer, dan titik sendiri.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                st.projects.forEach { p ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { scope.launch { st.switchProject(p.id) }; onClose() },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(p.id == st.activeProjectId, { scope.launch { st.switchProject(p.id) }; onClose() })
+                        Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        TextButton(onClick = { renameId = p.id; renameText = p.name }) { Text("Ubah") }
+                        TextButton(onClick = { deleteId = p.id }) { Text("Hapus") }
+                    }
+                }
+                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(newName, { newName = it }, label = { Text("Nama proyek baru") }, singleLine = true, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { scope.launch { st.createProject(newName) }; onClose() }) { Text("Buat") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Tutup") } },
+    )
+    renameId?.let { id ->
+        TextInputDialog("Ubah nama proyek", "Nama", renameText, { n -> st.renameProject(id, n); renameId = null }, { renameId = null })
+    }
+    deleteId?.let { id ->
+        val nm = st.projects.firstOrNull { it.id == id }?.name ?: ""
+        AlertDialog(
+            onDismissRequest = { deleteId = null },
+            title = { Text("Hapus proyek?") },
+            text = { Text("Semua peta, layer, dan titik di proyek \"$nm\" akan dihapus permanen.") },
+            confirmButton = { TextButton(onClick = { scope.launch { st.deleteProject(id) }; deleteId = null }) { Text("Hapus") } },
+            dismissButton = { TextButton(onClick = { deleteId = null }) { Text("Batal") } },
+        )
     }
 }
 

@@ -120,7 +120,14 @@ class AppState(val ctx: Context) {
         }
     }
     // ----- data permanen -----
-    var store by mutableStateOf(Storage.load(ctx))
+    private val index0 = Storage.loadIndex(ctx)
+    var projects by mutableStateOf(index0.projects)
+        private set
+    var activeProjectId by mutableStateOf(index0.active)
+        private set
+    val activeProject: Project
+        get() = projects.firstOrNull { it.id == activeProjectId } ?: projects.first()
+    var store by mutableStateOf(Storage.load(ctx, index0.active))
         private set
     init { GeoMath.unit = store.unit }
 
@@ -133,7 +140,7 @@ class AppState(val ctx: Context) {
     var zoom by mutableFloatStateOf(1f)
     var offset by mutableStateOf(Offset.Zero)
     var rotation by mutableFloatStateOf(0f)      // derajat, searah jarum jam
-    var rotateLocked by mutableStateOf(false)
+    var rotateLocked by mutableStateOf(true)     // terkunci: cubit dua jari hanya zoom/geser
     var ruler by mutableStateOf<List<Pt>>(emptyList())
     var viewSize by mutableStateOf(IntSize.Zero)
     private var needsFit = false
@@ -183,7 +190,7 @@ class AppState(val ctx: Context) {
 
     fun update(block: (Store) -> Store) {
         store = block(store).ensured()
-        Storage.save(ctx, store)
+        Storage.save(ctx, activeProjectId, store)
     }
 
     // =============== peta ===============
@@ -262,6 +269,68 @@ class AppState(val ctx: Context) {
         }
     }
 
+    // =============== proyek ===============
+
+    private fun resetView() {
+        currentMapId = null; bitmap = null; autoPoints = emptyList(); detail = null
+        page = 0; pageCount = 1
+        draft = emptyList(); ruler = emptyList(); mode = Mode.NONE
+        selectedId = null; navTarget = null; pendingPoint = null; pendingCalib = null
+    }
+
+    private fun saveIndex() = Storage.saveIndex(ctx, ProjectIndex(activeProjectId, projects))
+
+    suspend fun switchProject(id: String) {
+        if (id == activeProjectId || projects.none { it.id == id }) return
+        if (recording) { status = "Hentikan rekam track dulu sebelum pindah proyek"; return }
+        Storage.save(ctx, activeProjectId, store)
+        activeProjectId = id
+        saveIndex()
+        store = Storage.load(ctx, id)
+        GeoMath.unit = store.unit
+        resetView()
+        status = "Proyek: ${activeProject.name}"
+        store.lastMapId?.let { openMap(it) }
+    }
+
+    suspend fun createProject(name: String) {
+        val n = name.trim().ifBlank { "Proyek ${projects.size + 1}" }
+        val id = UUID.randomUUID().toString().take(8)
+        Storage.save(ctx, id, Store().copy(unit = store.unit).ensured())
+        projects = projects + Project(id, n)
+        saveIndex()
+        switchProject(id)
+    }
+
+    fun renameProject(id: String, name: String) {
+        projects = projects.map { if (it.id == id) it.copy(name = name.trim().ifBlank { it.name }) else it }
+        saveIndex()
+    }
+
+    suspend fun deleteProject(id: String) {
+        if (projects.size <= 1) { status = "Minimal harus ada satu proyek"; return }
+        if (recording && id == activeProjectId) { status = "Hentikan rekam track dulu"; return }
+        val s = if (id == activeProjectId) store else Storage.load(ctx, id)
+        s.maps.forEach { File(ctx.filesDir, "maps/${it.file}").delete() }
+        s.features.forEach { f -> f.photo?.let { File(ctx.filesDir, "photos/$it").delete() } }
+        val rest = projects.filter { it.id != id }
+        if (id == activeProjectId) {
+            activeProjectId = rest.first().id
+            projects = rest
+            saveIndex()
+            Storage.delete(ctx, id)
+            store = Storage.load(ctx, activeProjectId)
+            GeoMath.unit = store.unit
+            resetView()
+            status = "Proyek dihapus. Sekarang: ${activeProject.name}"
+            store.lastMapId?.let { openMap(it) }
+        } else {
+            projects = rest
+            saveIndex()
+            Storage.delete(ctx, id)
+        }
+    }
+
     fun deleteMap(id: String) {
         val e = store.maps.firstOrNull { it.id == id } ?: return
         File(ctx.filesDir, "maps/${e.file}").delete()
@@ -287,7 +356,11 @@ class AppState(val ctx: Context) {
         needsFit = false
         zoom = viewSize.width.toFloat() / b.width
         rotation = 0f
-        offset = Offset.Zero
+        // sisakan ruang untuk panel atas dan bilah bawah, lalu tengahkan
+        val d = ctx.resources.displayMetrics.density
+        val top = 130f * d
+        val avail = viewSize.height - top - 90f * d
+        offset = Offset(0f, top + max(0f, (avail - b.height * zoom) / 2f))
     }
 
     private fun rot(v: Offset, deg: Float): Offset {
@@ -332,6 +405,16 @@ class AppState(val ctx: Context) {
         val p = toMap(c)
         rotation = ((newRot % 360f) + 360f) % 360f
         offset = c - rot(p * zoom, rotation)
+    }
+
+    /** Kunci/lepas rotasi. Saat dikunci, peta kembali tegak (bingkai lurus). */
+    fun toggleRotateLock() {
+        if (rotateLocked) {
+            rotateLocked = false
+        } else {
+            rotateLocked = true
+            rotateAboutCenter(0f)
+        }
     }
 
     /** Utara sejati ke atas layar. */
@@ -412,7 +495,7 @@ class AppState(val ctx: Context) {
 
     // =============== mode & tap ===============
 
-    @JvmName("applyMode") fun setMode(m: Mode) {
+    fun setMode(m: Mode) {
         if (m != Mode.NONE && m != Mode.CALIBRATE && transform == null) {
             status = "Georeferensi belum siap. Kalibrasi ≥3 titik dulu."
             return

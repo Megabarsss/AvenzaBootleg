@@ -63,3 +63,7 @@ fun typeLabel(t: FType) = when (t) {
     FType.TRACK -> "track"
     FType.AREA -> "area"
 }
+
+data class Project(val id: String, val name: String)
+
+class ProjectIndex(val active: String, val projects: List<Project>)
