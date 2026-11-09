@@ -9,6 +9,7 @@ Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 - Logo aplikasi "Pengendalian Pemanfaatan Ruang Laut" sebagai ikon dan di layar awal.
 - Animasi halus pada panel bawah.
 - Build CI kini menampilkan pesan error kompilasi sebagai anotasi.
+- Perbaikan: bentrok nama `setMode` yang membuat build gagal (diganti `changeMode`).
 
 ## v0.1
 - Versi awal: impor PDF/GeoPDF/GeoTIFF (termasuk BigTIFF), posisi GPS offline, titik/garis/area, rekam jejak, ekspor, rotasi peta dan kompas, penggaris dengan pilihan satuan, kunci rotasi.

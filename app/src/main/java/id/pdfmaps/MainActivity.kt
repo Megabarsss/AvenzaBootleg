@@ -393,12 +393,12 @@ fun MapApp() {
                         TextButton(onClick = { toolsMenu = true }, Modifier.fillMaxWidth(), enabled = st.bitmap != null, contentPadding = tight) { Text("Alat ▴") }
                         DropdownMenu(expanded = toolsMenu, onDismissRequest = { toolsMenu = false }) {
                             DropdownMenuItem(text = { Text("Format koordinat: $fmtLabel") }, onClick = { toolsMenu = false; st.cycleCoordFormat() })
-            DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.setMode(Mode.ADD_POINT) })
+            DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.changeMode(Mode.ADD_POINT) })
             DropdownMenuItem(text = { Text("Tambah titik di posisi saya") }, onClick = { toolsMenu = false; st.pointHere() })
             DropdownMenuItem(text = { Text("Rata-rata GPS (20 fix)") }, onClick = { toolsMenu = false; st.startAveraging() })
-            DropdownMenuItem(text = { Text("Ukur jarak / gambar garis") }, onClick = { toolsMenu = false; st.setMode(Mode.MEASURE_LINE) })
-            DropdownMenuItem(text = { Text("Ukur luas / gambar area") }, onClick = { toolsMenu = false; st.setMode(Mode.MEASURE_AREA) })
-            DropdownMenuItem(text = { Text("Penggaris (2 titik)") }, onClick = { toolsMenu = false; st.setMode(Mode.RULER) })
+            DropdownMenuItem(text = { Text("Ukur jarak / gambar garis") }, onClick = { toolsMenu = false; st.changeMode(Mode.MEASURE_LINE) })
+            DropdownMenuItem(text = { Text("Ukur luas / gambar area") }, onClick = { toolsMenu = false; st.changeMode(Mode.MEASURE_AREA) })
+            DropdownMenuItem(text = { Text("Penggaris (2 titik)") }, onClick = { toolsMenu = false; st.changeMode(Mode.RULER) })
             DropdownMenuItem(text = { Text("Satuan ukur: ${GeoMath.UNIT_NAMES[st.store.unit]}") }, onClick = { toolsMenu = false; showUnit = true })
             DropdownMenuItem(
                 text = { Text(if (st.rotateLocked) "Putar peta: terkunci" else "Putar peta: bebas") },
@@ -424,7 +424,7 @@ fun MapApp() {
                 text = { Text(if (st.store.bgGeofence) "Geofence di latar belakang: aktif" else "Geofence di latar belakang: mati") },
                 onClick = { toolsMenu = false; st.toggleBgGeofence() },
             )
-            DropdownMenuItem(text = { Text("Kalibrasi manual") }, onClick = { toolsMenu = false; st.setMode(Mode.CALIBRATE) })
+            DropdownMenuItem(text = { Text("Kalibrasi manual") }, onClick = { toolsMenu = false; st.changeMode(Mode.CALIBRATE) })
             DropdownMenuItem(text = { Text("Hapus kalibrasi manual") }, onClick = { toolsMenu = false; st.setManual(emptyList()) })
             if (st.navTarget != null) {
                 DropdownMenuItem(text = { Text("Berhenti navigasi") }, onClick = { toolsMenu = false; st.navTarget = null })
