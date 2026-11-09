@@ -457,6 +457,10 @@ fun MapCanvas(st: AppState) {
     val image = remember(bmp) { bmp.asImageBitmap() }
     val dImg = remember(st.detail) { st.detail?.bmp?.asImageBitmap() }
     val measurer = rememberTextMeasurer()
+    val tr = st.transform
+    val shapes = remember(st.store.features, tr) {
+        if (tr == null) emptyMap() else st.store.features.associate { f -> f.id to f.pts.map { tr.off(it) } }
+    }
 
     Box(Modifier.fillMaxSize()) {
     Canvas(
@@ -502,7 +506,7 @@ fun MapCanvas(st: AppState) {
                 val layer = layers[f.layerId] ?: continue
                 if (!layer.visible) continue
                 val col = Color(layer.color)
-                val o = f.pts.map { t.off(it) }
+                val o = shapes[f.id] ?: continue
                 when (f.type) {
                     FType.POINT -> {
                         val c = o[0]

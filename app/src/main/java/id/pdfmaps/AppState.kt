@@ -18,6 +18,7 @@ import android.os.ParcelFileDescriptor
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.OpenableColumns
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,13 @@ fun GeoTransform.off(p: Pt): Offset {
 
 private const val AVG_N = 20
 
+/** Sisi maksimum bitmap peta, disesuaikan dengan memori yang tersedia (hemat di HP kecil). */
+fun maxBitmapDim(): Int {
+    val budget = Runtime.getRuntime().maxMemory() / 6
+    val dim = kotlin.math.sqrt(budget / 4.0).toInt()
+    return dim.coerceIn(2048, 4096)
+}
+
 /** Render satu halaman PDF ke bitmap + baca titik georeferensi OGC (jika ada). */
 fun loadPdfPage(file: File, pageIdx: Int): LoadedMap =
     ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
@@ -70,7 +78,7 @@ fun loadPdfPage(file: File, pageIdx: Int): LoadedMap =
             val count = renderer.pageCount
             val idx = pageIdx.coerceIn(0, count - 1)
             renderer.openPage(idx).use { page ->
-                val s = min(4096f / max(page.width, page.height), 4f)
+                val s = min(maxBitmapDim().toFloat() / max(page.width, page.height), 4f)
                 val bmp = Bitmap.createBitmap(
                     (page.width * s).toInt(), (page.height * s).toInt(), Bitmap.Config.ARGB_8888
                 )
@@ -85,14 +93,15 @@ fun loadPdfPage(file: File, pageIdx: Int): LoadedMap =
 
 fun loadImageFile(file: File): LoadedMap {
     if (GeoTiff.isTiff(file)) {
-        val r = GeoTiff.read(file, 3072)
+        val r = GeoTiff.read(file, minOf(3072, maxBitmapDim()))
         val bmp = Bitmap.createBitmap(r.pixels, r.width, r.height, Bitmap.Config.ARGB_8888)
         return LoadedMap(bmp, r.points, 1, 1f, r.note)
     }
     val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.path, o)
     var s = 1
-    while (max(o.outWidth, o.outHeight) / s > 4096) s *= 2
+    val cap = maxBitmapDim()
+    while (max(o.outWidth, o.outHeight) / s > cap) s *= 2
     val bmp = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = s })
         ?: throw IllegalStateException("Gambar tidak bisa dibaca")
     return LoadedMap(bmp, emptyList(), 1)
@@ -112,8 +121,8 @@ class AppState(val ctx: Context) {
     }
     // ----- data permanen -----
     var store by mutableStateOf(Storage.load(ctx))
-    init { GeoMath.unit = store.unit }
         private set
+    init { GeoMath.unit = store.unit }
 
     // ----- peta aktif -----
     var currentMapId by mutableStateOf<String?>(null)
@@ -162,8 +171,10 @@ class AppState(val ctx: Context) {
     // ----- turunan -----
     val currentMap: MapEntry? get() = store.maps.firstOrNull { it.id == currentMapId }
     val manualPoints: List<ControlPoint> get() = currentMap?.manual?.get(page) ?: emptyList()
-    val transform: GeoTransform?
-        get() = if (bitmap == null) null else GeoTransform.fit(autoPoints + manualPoints)
+    /** Di-cache: hanya dihitung ulang jika peta/titik kontrol berubah (bukan tiap frame). */
+    val transform: GeoTransform? by derivedStateOf {
+        if (bitmap == null) null else GeoTransform.fit(autoPoints + manualPoints)
+    }
     val activeLayer: Layer
         get() = store.layers.firstOrNull { it.id == store.activeLayerId } ?: store.layers.first()
 
@@ -369,7 +380,8 @@ class AppState(val ctx: Context) {
         val vx1 = min(b.width.toFloat(), cs.maxOf { it.x })
         val vy1 = min(b.height.toFloat(), cs.maxOf { it.y })
         if (vx1 <= vx0 || vy1 <= vy0) return
-        val zr = z * min(1f, min(3000f / ((vx1 - vx0) * z), 3000f / ((vy1 - vy0) * z)))
+        val dcap = minOf(3000f, maxBitmapDim() * 0.75f)
+        val zr = z * min(1f, min(dcap / ((vx1 - vx0) * z), dcap / ((vy1 - vy0) * z)))
         val w = max(1, ((vx1 - vx0) * zr).toInt())
         val h = max(1, ((vy1 - vy0) * zr).toInt())
         val id = currentMapId
