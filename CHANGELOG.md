@@ -3,6 +3,13 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.3 (2026-11-09)
+- Impor Shapefile: pilih file ZIP berisi .shp (+ .dbf untuk nama dan atribut). Titik, garis, dan poligon. Hanya WGS84 (EPSG:4326); shapefile berproyeksi ditolak dengan pesan.
+- Edit fitur: warna per fitur, simbol titik (bulat, kotak, segitiga, belah ketupat, silang), tebal garis, pindah fitur ke layer lain.
+- Pindahkan titik: tap peta atau ke posisi GPS saat ini.
+- Ubah track/garis menjadi area, dan area menjadi garis.
+- Layer: ubah warna dan nama layer.
+
 ## v0.2 (2026-11-09)
 - Proyek terpisah: tiap proyek punya peta (PDF), layer, dan titik sendiri. Data lama masuk ke "Proyek 1".
 - Tata letak baru terinspirasi Avenza, disesuaikan untuk layar HP 6,78": peta layar penuh, bar judul atas, kompas dan tombol posisi saya di kanan, bar koordinat GPS, menu bawah Peta / Layer / Alat / Data.

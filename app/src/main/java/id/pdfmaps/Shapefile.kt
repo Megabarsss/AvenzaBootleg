@@ -164,3 +164,88 @@ object Shapefile {
         return out.array()
     }
 }
+
+/** Pembaca Shapefile (.shp + .dbf opsional). Hanya koordinat WGS84 (lon/lat). */
+object ShpReader {
+    fun parse(shp: ByteArray, dbf: ByteArray?): List<RawFeature> {
+        val b = ByteBuffer.wrap(shp)
+        if (shp.size < 100) throw IllegalStateException("File .shp rusak")
+        b.order(ByteOrder.BIG_ENDIAN)
+        if (b.getInt(0) != 9994) throw IllegalStateException("Bukan file shapefile")
+        val attrs = if (dbf != null) readDbf(dbf) else emptyList()
+        val out = mutableListOf<RawFeature>()
+        var pos = 100
+        var idx = 0
+        while (pos + 8 <= shp.size) {
+            b.order(ByteOrder.BIG_ENDIAN)
+            val lenBytes = b.getInt(pos + 4) * 2
+            val start = pos + 8
+            if (lenBytes < 4 || start + lenBytes > shp.size) break
+            b.order(ByteOrder.LITTLE_ENDIAN)
+            val type = b.getInt(start)
+            val (nm, notes) = attrs.getOrNull(idx) ?: Pair("", "")
+            val label = if (nm.isNotBlank()) nm else "Fitur ${idx + 1}"
+            fun pt(off: Int) = Pt(b.getDouble(off + 8), b.getDouble(off))
+            when (type) {
+                1, 11, 21 -> out += RawFeature(label, notes, FType.POINT, listOf(pt(start + 4)))
+                8, 18, 28 -> {
+                    val n = b.getInt(start + 36)
+                    for (i in 0 until n) out += RawFeature(label, notes, FType.POINT, listOf(pt(start + 40 + i * 16)))
+                }
+                3, 13, 23, 5, 15, 25 -> {
+                    val area = type == 5 || type == 15 || type == 25
+                    val nParts = b.getInt(start + 36)
+                    val nPts = b.getInt(start + 40)
+                    val partsOff = start + 44
+                    val ptsOff = partsOff + nParts * 4
+                    for (p in 0 until nParts) {
+                        val a = b.getInt(partsOff + p * 4)
+                        val e = if (p + 1 < nParts) b.getInt(partsOff + (p + 1) * 4) else nPts
+                        val pts = (a until e).map { pt(ptsOff + it * 16) }.toMutableList()
+                        if (area && pts.size > 1 && pts.first().lat == pts.last().lat && pts.first().lon == pts.last().lon) pts.removeAt(pts.size - 1)
+                        val ok = if (area) pts.size >= 3 else pts.size >= 2
+                        if (ok) out += RawFeature(label, notes, if (area) FType.AREA else FType.LINE, pts)
+                    }
+                }
+                else -> {}
+            }
+            pos = start + lenBytes
+            idx++
+        }
+        if (out.any { f -> f.pts.any { Math.abs(it.lon) > 180.0 || Math.abs(it.lat) > 90.0 } })
+            throw IllegalStateException("Koordinat bukan WGS84 (lon/lat). Ubah dulu ke WGS84 (EPSG:4326), mis. di QGIS")
+        return out
+    }
+
+    /** Daftar (nama, catatan) per rekaman dari file .dbf. */
+    private fun readDbf(d: ByteArray): List<Pair<String, String>> {
+        if (d.size < 33) return emptyList()
+        val b = ByteBuffer.wrap(d).order(ByteOrder.LITTLE_ENDIAN)
+        val n = b.getInt(4)
+        val hLen = b.getShort(8).toInt() and 0xFFFF
+        val rLen = b.getShort(10).toInt() and 0xFFFF
+        class Fld(val name: String, val off: Int, val len: Int)
+        val flds = mutableListOf<Fld>()
+        var p = 32
+        var off = 1
+        while (p + 32 <= hLen && d[p] != 0x0D.toByte()) {
+            val nm = String(d, p, 11, Charsets.ISO_8859_1).trim { it == '\u0000' || it == ' ' }
+            val len = d[p + 16].toInt() and 0xFF
+            flds += Fld(nm, off, len)
+            off += len
+            p += 32
+        }
+        val nameIdx = flds.indexOfFirst { it.name.equals("name", true) || it.name.equals("nama", true) }
+            .let { if (it >= 0) it else 0 }
+        val out = ArrayList<Pair<String, String>>()
+        for (i in 0 until n) {
+            val rs = hLen + i * rLen
+            if (rs + rLen > d.size) break
+            val vals = flds.map { String(d, rs + it.off, it.len, Charsets.ISO_8859_1).trim() }
+            val nm = vals.getOrNull(nameIdx) ?: ""
+            val notes = flds.indices.filter { it != nameIdx && vals[it].isNotEmpty() }.joinToString("; ") { "${flds[it].name}=${vals[it]}" }
+            out += Pair(nm, notes)
+        }
+        return out
+    }
+}

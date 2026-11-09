@@ -26,6 +26,9 @@ data class Feature(
     val radius: Double = 0.0,    // geofence dalam meter (hanya POINT), 0 = mati
     val attrs: Map<String, String> = emptyMap(),
     val created: Long = System.currentTimeMillis(),
+    val color: Long = 0L,        // 0 = ikut warna layer
+    val symbol: Int = 0,         // bentuk titik: 0 bulat, 1 kotak, 2 segitiga, 3 belah ketupat, 4 silang
+    val width: Int = 0,          // tebal garis: 0 standar, 1 tipis, 2 sedang, 3 tebal
 )
 
 data class MapEntry(
@@ -67,3 +70,10 @@ fun typeLabel(t: FType) = when (t) {
 data class Project(val id: String, val name: String)
 
 class ProjectIndex(val active: String, val projects: List<Project>)
+
+val FEATURE_COLORS = longArrayOf(
+    0xFFE53935, 0xFFFF9800, 0xFFFDD835, 0xFF43A047, 0xFF00ACC1, 0xFF1E88E5,
+    0xFF8E24AA, 0xFFD81B60, 0xFF6D4C41, 0xFF212121, 0xFF757575, 0xFFFFFFFF,
+)
+val SYMBOL_NAMES = listOf("Bulat", "Kotak", "Segitiga", "Belah ketupat", "Silang")
+val WIDTH_NAMES = listOf("Standar", "Tipis", "Sedang", "Tebal")

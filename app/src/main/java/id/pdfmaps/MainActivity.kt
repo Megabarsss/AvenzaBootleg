@@ -20,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -340,6 +341,7 @@ fun MapApp() {
                             when {
                                 st.mode == Mode.CALIBRATE -> "Kalibrasi: tap titik di peta (manual: ${st.manualPoints.size}, min 3)"
                                 st.mode == Mode.ADD_POINT -> "Tap peta untuk menaruh titik"
+                                st.mode == Mode.MOVE -> "Tap peta untuk memindahkan titik"
                                 st.mode == Mode.RULER -> st.rulerInfo()
                                 st.mode == Mode.MEASURE_LINE || st.mode == Mode.MEASURE_AREA ->
                                     st.draftInfo().ifBlank { "Tap peta untuk menambah titik" }
@@ -353,8 +355,8 @@ fun MapApp() {
                         )
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.End) {
                             when {
-                                st.mode == Mode.CALIBRATE || st.mode == Mode.ADD_POINT -> {
-                                    TextButton(onClick = { st.mode = Mode.NONE }) { Text("Selesai") }
+                                st.mode == Mode.CALIBRATE || st.mode == Mode.ADD_POINT || st.mode == Mode.MOVE -> {
+                                    TextButton(onClick = { st.mode = Mode.NONE; st.moveId = null }) { Text("Selesai") }
                                 }
                                 st.mode == Mode.RULER -> {
                                     TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { Text("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
@@ -439,7 +441,7 @@ fun MapApp() {
             DropdownMenuItem(text = { Text("Ekspor KMZ") }, onClick = { dataMenu = false; kmzOut.launch("fitur.kmz") })
             DropdownMenuItem(text = { Text("Ekspor Shapefile (ZIP)") }, onClick = { dataMenu = false; shpOut.launch("fitur_shp.zip") })
             DropdownMenuItem(text = { Text("Ekspor CSV") }, onClick = { dataMenu = false; csvOut.launch("fitur.csv") })
-            DropdownMenuItem(text = { Text("Impor KML / KMZ / GPX") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
+            DropdownMenuItem(text = { Text("Impor KML / KMZ / SHP (ZIP) / GPX") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
                         }
                     }
                 }
@@ -492,6 +494,38 @@ fun MapApp() {
 // ======================================================================
 //  Kanvas peta
 // ======================================================================
+
+private fun DrawScope.drawSymbol(sym: Int, c: Offset, r: Float, col: Color) {
+    val w = Color.White
+    when (sym) {
+        1 -> {
+            drawRect(w, Offset(c.x - r * 1.25f, c.y - r * 1.25f), androidx.compose.ui.geometry.Size(r * 2.5f, r * 2.5f))
+            drawRect(col, Offset(c.x - r, c.y - r), androidx.compose.ui.geometry.Size(r * 2f, r * 2f))
+        }
+        2 -> {
+            fun tri(k: Float) = Path().apply {
+                moveTo(c.x, c.y - k); lineTo(c.x + k, c.y + k * 0.85f); lineTo(c.x - k, c.y + k * 0.85f); close()
+            }
+            drawPath(tri(r * 1.35f), w); drawPath(tri(r * 1.05f), col)
+        }
+        3 -> {
+            fun dia(k: Float) = Path().apply {
+                moveTo(c.x, c.y - k); lineTo(c.x + k, c.y); lineTo(c.x, c.y + k); lineTo(c.x - k, c.y); close()
+            }
+            drawPath(dia(r * 1.45f), w); drawPath(dia(r * 1.15f), col)
+        }
+        4 -> {
+            drawLine(w, Offset(c.x - r * 1.3f, c.y), Offset(c.x + r * 1.3f, c.y), strokeWidth = r * 1.1f)
+            drawLine(w, Offset(c.x, c.y - r * 1.3f), Offset(c.x, c.y + r * 1.3f), strokeWidth = r * 1.1f)
+            drawLine(col, Offset(c.x - r * 1.2f, c.y), Offset(c.x + r * 1.2f, c.y), strokeWidth = r * 0.6f)
+            drawLine(col, Offset(c.x, c.y - r * 1.2f), Offset(c.x, c.y + r * 1.2f), strokeWidth = r * 0.6f)
+        }
+        else -> {
+            drawCircle(w, r * 1.25f, c)
+            drawCircle(col, r, c)
+        }
+    }
+}
 
 private fun pathOf(o: List<Offset>, close: Boolean): Path = Path().apply {
     moveTo(o[0].x, o[0].y)
@@ -553,7 +587,8 @@ fun MapCanvas(st: AppState) {
             for (f in st.store.features) {
                 val layer = layers[f.layerId] ?: continue
                 if (!layer.visible) continue
-                val col = Color(layer.color)
+                val col = Color(if (f.color != 0L) f.color else layer.color)
+                val wpx = when (f.width) { 1 -> 2f; 2 -> 4f; 3 -> 8f; else -> if (f.type == FType.AREA) 3f else 4f }
                 val o = shapes[f.id] ?: continue
                 when (f.type) {
                     FType.POINT -> {
@@ -563,20 +598,19 @@ fun MapCanvas(st: AppState) {
                             drawCircle(col.copy(alpha = 0.15f), rp, c)
                             drawCircle(col, rp, c, style = Stroke(2f / z))
                         }
-                        drawCircle(Color.White, r * 1.25f, c)
-                        drawCircle(col, r, c)
+                        drawSymbol(f.symbol, c, r, col)
                         val lp = Offset(c.x + r * 1.6f, c.y - r)
                         withTransform({ rotate(-st.rotation, pivot = lp) }) {
                             drawText(measurer, f.name, lp, TextStyle(fontSize = fontPx.sp, color = Color.Black))
                         }
                     }
                     FType.LINE, FType.TRACK ->
-                        if (o.size >= 2) drawPath(pathOf(o, false), col, style = Stroke(4f / z))
+                        if (o.size >= 2) drawPath(pathOf(o, false), col, style = Stroke(wpx / z))
                     FType.AREA ->
                         if (o.size >= 3) {
                             val p = pathOf(o, true)
                             drawPath(p, col.copy(alpha = 0.25f))
-                            drawPath(p, col, style = Stroke(3f / z))
+                            drawPath(p, col, style = Stroke(wpx / z))
                         }
                 }
             }
@@ -892,6 +926,8 @@ fun MapsDialog(
 @Composable
 fun LayersDialog(st: AppState, onClose: () -> Unit) {
     var attrLayer by remember { mutableStateOf<String?>(null) }
+    var colorLayer by remember { mutableStateOf<String?>(null) }
+    var renameLayerId by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var q by remember { mutableStateOf("") }
     AlertDialog(
@@ -904,7 +940,12 @@ fun LayersDialog(st: AppState, onClose: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(layer.visible, { st.setLayerVisible(layer.id, it) })
                         RadioButton(layer.id == st.store.activeLayerId, { st.setActiveLayer(layer.id) })
-                        Text(layer.name, Modifier.weight(1f))
+                        Box(Modifier.size(18.dp).background(Color(layer.color), CircleShape).border(1.dp, Color.Gray, CircleShape).clickable { colorLayer = layer.id })
+                        Text(layer.name, Modifier.weight(1f).padding(start = 6.dp))
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        TextButton(onClick = { colorLayer = layer.id }) { Text("Warna") }
+                        TextButton(onClick = { renameLayerId = layer.id }) { Text("Ubah nama") }
                         TextButton(onClick = { attrLayer = layer.id }) { Text("Atribut") }
                         TextButton(onClick = { st.deleteLayer(layer.id) }) { Text("Hapus") }
                     }
@@ -930,6 +971,37 @@ fun LayersDialog(st: AppState, onClose: () -> Unit) {
     )
     attrLayer?.let { id ->
         st.store.layers.firstOrNull { it.id == id }?.let { AttrFieldsDialog(st, it) { attrLayer = null } }
+    }
+    colorLayer?.let { id ->
+        AlertDialog(
+            onDismissRequest = { colorLayer = null },
+            title = { Text("Warna layer") },
+            text = { ColorRow(st.store.layers.firstOrNull { it.id == id }?.color ?: 0L, false) { c -> st.setLayerColor(id, c); colorLayer = null } },
+            confirmButton = { TextButton(onClick = { colorLayer = null }) { Text("Tutup") } },
+        )
+    }
+    renameLayerId?.let { id ->
+        TextInputDialog("Ubah nama layer", "Nama", st.store.layers.firstOrNull { it.id == id }?.name ?: "", { n -> st.renameLayer(id, n); renameLayerId = null }, { renameLayerId = null })
+    }
+}
+
+@Composable
+fun ColorRow(selected: Long, allowDefault: Boolean, onPick: (Long) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (allowDefault) {
+            OutlinedButton(onClick = { onPick(0L) }) { Text(if (selected == 0L) "✓ Ikut warna layer" else "Ikut warna layer") }
+        }
+        FEATURE_COLORS.toList().chunked(6).forEach { rowColors ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowColors.forEach { c ->
+                    Box(
+                        Modifier.size(36.dp).background(Color(c), CircleShape)
+                            .border(if (c == selected) 3.dp else 1.dp, if (c == selected) MaterialTheme.colorScheme.primary else Color.Gray, CircleShape)
+                            .clickable { onPick(c) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -995,6 +1067,10 @@ fun FeatureDialog(st: AppState, f: Feature, onClose: () -> Unit) {
     var attrs by remember(f.id) { mutableStateOf(f.attrs) }
     val fields = st.store.layers.firstOrNull { it.id == f.layerId }?.fields ?: emptyList()
     var radius by remember(f.id) { mutableStateOf(if (f.radius > 0) f.radius.toInt().toString() else "") }
+    var color by remember(f.id) { mutableStateOf(f.color) }
+    var symbol by remember(f.id) { mutableStateOf(f.symbol) }
+    var width by remember(f.id) { mutableStateOf(f.width) }
+    var layerId by remember(f.id) { mutableStateOf(f.layerId) }
     val thumb = remember(f.photo) { f.photo?.let { st.loadThumb(it) } }
     AlertDialog(
         onDismissRequest = onClose,
@@ -1013,12 +1089,44 @@ fun FeatureDialog(st: AppState, f: Feature, onClose: () -> Unit) {
                         label = { Text("Geofence (meter, kosong = mati)") }, singleLine = true,
                     )
                 }
+                Text("Layer", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    st.store.layers.forEach { ly ->
+                        if (ly.id == layerId) Button(onClick = { layerId = ly.id }) { Text(ly.name) }
+                        else OutlinedButton(onClick = { layerId = ly.id }) { Text(ly.name) }
+                    }
+                }
+                Text("Warna", style = MaterialTheme.typography.labelMedium)
+                ColorRow(color, true) { color = it }
+                if (f.type == FType.POINT) {
+                    Text("Simbol", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SYMBOL_NAMES.forEachIndexed { i, nm ->
+                            if (i == symbol) Button(onClick = { symbol = i }) { Text(nm) }
+                            else OutlinedButton(onClick = { symbol = i }) { Text(nm) }
+                        }
+                    }
+                } else {
+                    Text("Tebal garis", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        WIDTH_NAMES.forEachIndexed { i, nm ->
+                            if (i == width) Button(onClick = { width = i }) { Text(nm) }
+                            else OutlinedButton(onClick = { width = i }) { Text(nm) }
+                        }
+                    }
+                }
                 if (thumb != null) {
                     Image(bitmap = thumb.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp))
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { st.centerOnFeature(f); onClose() }) { Text("Zoom") }
                     OutlinedButton(onClick = { st.navTarget = f.id; onClose() }) { Text("Navigasi") }
+                    if (f.type == FType.POINT) {
+                        OutlinedButton(onClick = { st.startMove(f.id); onClose() }) { Text("Pindah (tap peta)") }
+                        OutlinedButton(onClick = { st.moveToMe(f); onClose() }) { Text("Ke posisiku") }
+                    } else {
+                        OutlinedButton(onClick = { st.convertFeature(f); onClose() }) { Text(if (f.type == FType.AREA) "Jadikan garis" else "Jadikan area") }
+                    }
                     OutlinedButton(onClick = { st.deleteFeature(f.id); onClose() }) { Text("Hapus") }
                 }
             }
@@ -1026,7 +1134,7 @@ fun FeatureDialog(st: AppState, f: Feature, onClose: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 st.updateFeature(
-                    f.copy(name = name.ifBlank { f.name }, notes = notes, attrs = attrs, radius = radius.toDoubleOrNull() ?: 0.0)
+                    f.copy(name = name.ifBlank { f.name }, notes = notes, attrs = attrs, radius = radius.toDoubleOrNull() ?: 0.0, color = color, symbol = symbol, width = width, layerId = layerId)
                 )
                 onClose()
             }) { Text("Simpan") }

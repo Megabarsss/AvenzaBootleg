@@ -45,7 +45,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
-enum class Mode { NONE, CALIBRATE, ADD_POINT, MEASURE_LINE, MEASURE_AREA, RULER }
+enum class Mode { NONE, CALIBRATE, ADD_POINT, MEASURE_LINE, MEASURE_AREA, RULER, MOVE }
 
 class LoadedMap(
     val bitmap: Bitmap,
@@ -159,6 +159,7 @@ class AppState(val ctx: Context) {
     var alert by mutableStateOf<String?>(null)
     var pendingCalib by mutableStateOf<Offset?>(null)
     var pendingPoint by mutableStateOf<Pt?>(null)
+    var moveId by mutableStateOf<String?>(null)
     var selectedId by mutableStateOf<String?>(null)
     var detail by mutableStateOf<Detail?>(null)
     var btName by mutableStateOf<String?>(null)
@@ -512,6 +513,14 @@ class AppState(val ctx: Context) {
             Mode.CALIBRATE -> pendingCalib = p
             Mode.ADD_POINT -> if (ll != null) pendingPoint = Pt(ll.first, ll.second)
             Mode.MEASURE_LINE, Mode.MEASURE_AREA -> if (ll != null) draft = draft + Pt(ll.first, ll.second)
+            Mode.MOVE -> if (ll != null) {
+                val id = moveId
+                store.features.firstOrNull { it.id == id }?.let { f ->
+                    updateFeature(f.copy(pts = listOf(Pt(ll.first, ll.second, f.pts.firstOrNull()?.ele ?: Double.NaN))))
+                    status = "Titik \"${f.name}\" dipindahkan"
+                }
+                moveId = null; mode = Mode.NONE
+            }
             Mode.RULER -> if (ll != null) ruler = if (ruler.size >= 2) listOf(Pt(ll.first, ll.second)) else ruler + Pt(ll.first, ll.second)
             Mode.NONE -> {
                 val hit = hitTest(p.x, p.y)
@@ -597,6 +606,35 @@ class AppState(val ctx: Context) {
 
     fun updateFeature(f: Feature) =
         update { s -> s.copy(features = s.features.map { if (it.id == f.id) f else it }) }
+
+    fun startMove(id: String) {
+        moveId = id; mode = Mode.MOVE; draft = emptyList(); ruler = emptyList()
+        status = "Tap peta untuk memindahkan titik"
+    }
+
+    fun moveToMe(f: Feature) {
+        val l = loc
+        if (l == null) { status = "GPS belum dapat sinyal"; return }
+        updateFeature(f.copy(pts = listOf(Pt(l.latitude, l.longitude, if (l.hasAltitude()) l.altitude else Double.NaN, l.time))))
+        status = "Titik \"${f.name}\" dipindah ke posisi Anda"
+    }
+
+    /** Track/garis -> area (butuh minimal 3 titik); area -> garis. */
+    fun convertFeature(f: Feature) {
+        when {
+            f.type == FType.AREA -> updateFeature(f.copy(type = FType.LINE, pts = f.pts + f.pts.first()))
+            (f.type == FType.LINE || f.type == FType.TRACK) && f.pts.size >= 3 -> updateFeature(f.copy(type = FType.AREA))
+            else -> status = "Butuh minimal 3 titik untuk dijadikan area"
+        }
+    }
+
+    fun setLayerColor(id: String, color: Long) =
+        update { s -> s.copy(layers = s.layers.map { if (it.id == id) it.copy(color = color) else it }) }
+
+    fun renameLayer(id: String, name: String) {
+        if (name.isBlank()) return
+        update { s -> s.copy(layers = s.layers.map { if (it.id == id) it.copy(name = name.trim()) else it }) }
+    }
 
     fun deleteFeature(id: String) {
         store.features.firstOrNull { it.id == id }?.photo?.let { File(ctx.filesDir, "photos/$it").delete() }
@@ -847,21 +885,37 @@ class AppState(val ctx: Context) {
         try {
             val bytes = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() } }
             val isZip = bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
-            val data: ByteArray = if (isZip) {
-                var kml: ByteArray? = null
+            val isShp = bytes.size > 100 && bytes[0] == 0.toByte() && bytes[1] == 0.toByte() && bytes[2] == 0x27.toByte() && bytes[3] == 0x0A.toByte()
+            var shp: ByteArray? = if (isShp) bytes else null
+            var dbf: ByteArray? = null
+            var prj: ByteArray? = null
+            var kml: ByteArray? = null
+            if (isZip) {
                 ZipInputStream(ByteArrayInputStream(bytes)).use { z ->
                     var en = z.nextEntry
                     while (en != null) {
-                        if (en.name.endsWith(".kml", true) && (kml == null || en.name.equals("doc.kml", true))) kml = z.readBytes()
+                        val n = en.name
+                        if (n.endsWith(".kml", true) && (kml == null || n.equals("doc.kml", true))) kml = z.readBytes()
+                        else if (n.endsWith(".shp", true) && shp == null) shp = z.readBytes()
+                        else if (n.endsWith(".dbf", true) && dbf == null) dbf = z.readBytes()
+                        else if (n.endsWith(".prj", true) && prj == null) prj = z.readBytes()
                         en = z.nextEntry
                     }
                 }
-                kml ?: run { status = "KMZ tidak berisi file .kml"; return }
-            } else bytes
-            val head = data.decodeToString(0, min(data.size, 2000))
-            val raws = if (head.contains("<gpx")) Importer.parseGpx(ByteArrayInputStream(data))
-            else Importer.parseKml(ByteArrayInputStream(data))
-            if (raws.isEmpty()) { status = "Tidak ada fitur yang bisa dibaca (KML, KMZ, atau GPX)"; return }
+            }
+            val raws: List<RawFeature>
+            if (shp != null) {
+                if (prj != null && prj!!.decodeToString().contains("PROJCS")) {
+                    status = "Shapefile berproyeksi (bukan WGS84). Ubah dulu ke WGS84 (EPSG:4326) di QGIS"; return
+                }
+                raws = ShpReader.parse(shp!!, dbf)
+            } else {
+                val data: ByteArray = if (isZip) (kml ?: run { status = "ZIP tidak berisi .kml atau .shp"; return }) else bytes
+                val head = data.decodeToString(0, min(data.size, 2000))
+                raws = if (head.contains("<gpx")) Importer.parseGpx(ByteArrayInputStream(data))
+                else Importer.parseKml(ByteArrayInputStream(data))
+            }
+            if (raws.isEmpty()) { status = "Tidak ada fitur yang bisa dibaca (KML, KMZ, GPX, atau SHP)"; return }
             val layer = Layer(name = (displayName(uri) ?: "Impor").substringBeforeLast('.'), color = nextColor())
             update { s ->
                 s.copy(

@@ -114,6 +114,7 @@ object Storage {
                     put("name", f.name); put("notes", f.notes)
                     put("photo", f.photo ?: JSONObject.NULL)
                     put("radius", f.radius); put("created", f.created)
+                    put("color", f.color); put("symbol", f.symbol); put("width", f.width)
                     put("attrs", JSONObject().also { ao -> f.attrs.forEach { (k, v) -> ao.put(k, v) } })
                     put("pts", JSONArray().also { pa -> f.pts.forEach { pa.put(ptJson(it)) } })
                 })
@@ -166,6 +167,7 @@ object Storage {
                 pts = pts,
                 photo = if (f.isNull("photo")) null else f.getString("photo"),
                 radius = f.optDouble("radius", 0.0), created = f.optLong("created", 0L),
+                color = f.optLong("color", 0L), symbol = f.optInt("symbol", 0), width = f.optInt("width", 0),
                 attrs = f.optJSONObject("attrs")?.let { ao -> ao.keys().asSequence().associateWith { k -> ao.optString(k, "") } } ?: emptyMap(),
             )
         }

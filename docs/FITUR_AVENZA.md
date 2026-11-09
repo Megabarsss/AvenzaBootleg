@@ -18,7 +18,7 @@ Aplikasi peta offline: pengguna mengimpor peta ber-georeferensi (PDF, GeoPDF, Ge
 | Ukur jarak dan luas | Haversine untuk jarak; shoelace pada koordinat terproyeksi untuk luas | ✅ + simpan sebagai garis/area |
 | Layer | Fitur dikelompokkan per layer; toggle visibilitas; satu layer aktif per peta | ✅ + pencarian fitur |
 | Foto bergeotag | Baca EXIF GPS → buat placemark | ✅ |
-| Ekspor/impor KML, GPX, CSV, Shapefile | Serialisasi format; SHP butuh library tambahan | Ekspor GPX, KML, KMZ, Shapefile (ZIP), CSV ✅; impor KML, KMZ, GPX ✅ |
+| Ekspor/impor KML, GPX, CSV, Shapefile | Serialisasi format; SHP butuh library tambahan | Ekspor GPX, KML, KMZ, Shapefile (ZIP), CSV ✅; impor KML, KMZ, GPX, Shapefile (ZIP, WGS84) ✅ |
 | Atribut/skema kustom | Field kustom per layer (teks, angka, pilihan) | ✅ kolom teks per layer, ikut ke KML/CSV/Shapefile |
 | Geofence + notifikasi | Poligon/radius; cek posisi vs fitur; notifikasi saat masuk/keluar | ✅ radius per titik, peringatan + getar; opsi pantau di latar belakang ✅ |
 | Kompas dan navigasi ke titik | Sensor orientasi; bearing dan jarak ke target | ✅ |
