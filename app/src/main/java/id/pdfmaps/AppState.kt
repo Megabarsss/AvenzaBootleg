@@ -412,7 +412,7 @@ class AppState(val ctx: Context) {
 
     // =============== mode & tap ===============
 
-    fun setMode(m: Mode) {
+    @JvmName("applyMode") fun setMode(m: Mode) {
         if (m != Mode.NONE && m != Mode.CALIBRATE && transform == null) {
             status = "Georeferensi belum siap. Kalibrasi ≥3 titik dulu."
             return
