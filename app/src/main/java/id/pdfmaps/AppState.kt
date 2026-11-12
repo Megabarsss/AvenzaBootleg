@@ -107,6 +107,8 @@ fun loadImageFile(file: File): LoadedMap {
     return LoadedMap(bmp, emptyList(), 1)
 }
 
+const val BASEMAP_NAME = "Indonesia (peta dasar)"
+
 class AppState(val ctx: Context) {
     init {
         GeoTiff.jpegDecoder = { bytes ->
@@ -160,6 +162,8 @@ class AppState(val ctx: Context) {
     var pendingCalib by mutableStateOf<Offset?>(null)
     var pendingPoint by mutableStateOf<Pt?>(null)
     var moveId by mutableStateOf<String?>(null)
+    var follow by mutableStateOf(false)
+    var gotoPt by mutableStateOf<Pt?>(null)
     var selectedId by mutableStateOf<String?>(null)
     var detail by mutableStateOf<Detail?>(null)
     var btName by mutableStateOf<String?>(null)
@@ -330,6 +334,43 @@ class AppState(val ctx: Context) {
             saveIndex()
             Storage.delete(ctx, id)
         }
+    }
+
+    /** Peta dasar Indonesia bawaan (GeoTIFF di dalam APK, tanpa internet). */
+    suspend fun addBasemap() {
+        try {
+            val existing = store.maps.firstOrNull { it.name == BASEMAP_NAME }
+            if (existing != null) { openMap(existing.id); return }
+            val fname = UUID.randomUUID().toString() + ".img"
+            withContext(Dispatchers.IO) {
+                val dir = File(ctx.filesDir, "maps").apply { mkdirs() }
+                ctx.assets.open("indonesia.tif").use { i -> File(dir, fname).outputStream().use { i.copyTo(it) } }
+            }
+            val e = MapEntry(name = BASEMAP_NAME, file = fname, isImage = true)
+            update { it.copy(maps = it.maps + e) }
+            openMap(e.id)
+        } catch (ex: Exception) {
+            status = "Gagal membuka peta dasar: ${ex.message}"
+        }
+    }
+
+    fun toggleFollow() {
+        follow = !follow
+        if (follow) centerOnMe()
+        status = if (follow) "Ikuti posisi: aktif (ketuk lagi untuk mematikan)" else "Ikuti posisi: mati"
+    }
+
+    /** Loncat ke koordinat "lat, lon" (derajat desimal). */
+    fun goTo(text: String) {
+        val nums = Regex("-?\\d+(?:\\.\\d+)?").findAll(text).map { it.value.toDouble() }.toList()
+        val t = transform
+        if (nums.size < 2 || Math.abs(nums[0]) > 90 || Math.abs(nums[1]) > 180) { status = "Format: lintang, bujur (mis. -6.2, 106.8)"; return }
+        if (t == null) { status = "Peta belum ter-georeferensi"; return }
+        val p = Pt(nums[0], nums[1])
+        gotoPt = p
+        val o = t.off(p)
+        centerOn(o.x.toDouble(), o.y.toDouble())
+        status = "Ke " + GeoMath.fmtCoord(p.lat, p.lon, store.coordFormat)
     }
 
     fun deleteMap(id: String) {
@@ -786,6 +827,7 @@ class AppState(val ctx: Context) {
             avgFixes = avgFixes + p
             if (avgFixes.size >= AVG_N) finishAveraging() else status = "Rata-rata GPS: ${avgFixes.size}/$AVG_N"
         }
+        if (follow && transform != null) centerOnMe()
         checkGeofences(p)
     }
 

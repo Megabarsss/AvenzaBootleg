@@ -3,6 +3,14 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.8 (2026-11-12)
+- Peta dasar Indonesia bawaan (offline, sudah di dalam APK): garis pantai, batas provinsi, dan kota utama. Buka lewat Peta > "Peta Indonesia". Peta ikhtisar (sekitar 1,7 km per piksel), bukan peta jalan detail. Sumber: Natural Earth (domain publik).
+- Ikuti posisi: tombol posisi saya kini menyalakan/mematikan mode peta mengikuti GPS.
+- Ke koordinat: Alat > "Ke koordinat…" untuk loncat ke lintang, bujur dengan penanda.
+- Impor CSV titik (kolom lat/lon atau lintang/bujur; pemisah koma, titik koma, atau tab), juga di dalam ZIP.
+- Ekspor KML/KMZ kini membawa warna fitur dan tebal garis.
+- Layar tetap menyala selama aplikasi terbuka.
+
 ## v0.7 (2026-11-12)
 - Antarmuka: ikon sungguhan menggantikan teks dan emoji (menu, layer, posisi saya).
 - Menu bawah baru: ikon + label (Peta, Layer, Alat, Data).

@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         PDFBoxResourceLoader.init(applicationContext)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent { PdfMapsTheme { MapApp() } }
     }
 
@@ -140,6 +141,7 @@ fun MapApp() {
     var showBt by remember { mutableStateOf(false) }
     var showUnit by remember { mutableStateOf(false) }
     var showProjects by remember { mutableStateOf(false) }
+    var showGoto by remember { mutableStateOf(false) }
     var showSaveDraft by remember { mutableStateOf(false) }
     var toolsMenu by remember { mutableStateOf(false) }
     var dataMenu by remember { mutableStateOf(false) }
@@ -253,6 +255,7 @@ fun MapApp() {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(onClick = { showMaps = true }) { Text("Impor peta") }
+                    OutlinedButton(onClick = { scope.launch { st.addBasemap() } }, Modifier.padding(top = 8.dp)) { Text("Buka peta Indonesia") }
                 }
             }
         }
@@ -316,11 +319,11 @@ fun MapApp() {
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         CompassButton(st)
                         Surface(
-                            Modifier.size(48.dp).clickable { st.centerOnMe() },
+                            Modifier.size(48.dp).clickable { st.toggleFollow() },
                             shape = CircleShape,
-                            color = panelColor,
+                            color = if (st.follow) MaterialTheme.colorScheme.primary else panelColor,
                             shadowElevation = 6.dp,
-                        ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.LocationOn, contentDescription = "Posisi saya", tint = MaterialTheme.colorScheme.primary) } }
+                        ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.LocationOn, contentDescription = "Ikuti posisi saya", tint = if (st.follow) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary) } }
                     }
                 }
             }
@@ -436,6 +439,7 @@ fun MapApp() {
             )
             DropdownMenuItem(text = { Text("Foto bergeotag → titik") }, onClick = { toolsMenu = false; photoPicker.launch(arrayOf("image/*")) })
             DropdownMenuItem(text = { Text("Pusatkan ke posisi saya") }, onClick = { toolsMenu = false; st.centerOnMe() })
+            DropdownMenuItem(text = { Text("Ke koordinat…") }, onClick = { toolsMenu = false; showGoto = true })
             DropdownMenuItem(
                 text = { Text("GPS Bluetooth…") },
                 onClick = {
@@ -464,7 +468,7 @@ fun MapApp() {
             DropdownMenuItem(text = { Text("Ekspor KMZ") }, onClick = { dataMenu = false; kmzOut.launch("fitur.kmz") })
             DropdownMenuItem(text = { Text("Ekspor Shapefile (ZIP)") }, onClick = { dataMenu = false; shpOut.launch("fitur_shp.zip") })
             DropdownMenuItem(text = { Text("Ekspor CSV") }, onClick = { dataMenu = false; csvOut.launch("fitur.csv") })
-            DropdownMenuItem(text = { Text("Impor KML / KMZ / SHP / GPX / ZIP") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
+            DropdownMenuItem(text = { Text("Impor KML / KMZ / SHP / GPX / CSV / ZIP") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
                         }
                     }
                 }
@@ -487,6 +491,7 @@ fun MapApp() {
     if (showBt) BtDialog(st) { showBt = false }
     if (showUnit) UnitDialog(st) { showUnit = false }
     if (showProjects) ProjectsDialog(st, scope) { showProjects = false }
+    if (showGoto) TextInputDialog("Ke koordinat", "lintang, bujur (mis. -6.2, 106.8)", "", { v -> st.goTo(v); showGoto = false }, { showGoto = false })
     if (showUrl) {
         TextInputDialog("Impor dari URL", "https://…/peta.pdf", "", { u ->
             showUrl = false
@@ -689,6 +694,18 @@ fun MapCanvas(st: AppState) {
             // track yang sedang direkam
             if (st.trackPts.size >= 2) {
                 drawPath(pathOf(st.trackPts.map { t.off(it) }, false), Color.Red, style = Stroke(4f / z))
+            }
+
+            // penanda "Ke koordinat"
+            st.gotoPt?.let { g ->
+                val c = t.off(g)
+                val k = r * 2.2f
+                val mg = Color(0xFFD81B60)
+                drawLine(Color.White, Offset(c.x - k, c.y), Offset(c.x + k, c.y), strokeWidth = 5f / z)
+                drawLine(Color.White, Offset(c.x, c.y - k), Offset(c.x, c.y + k), strokeWidth = 5f / z)
+                drawLine(mg, Offset(c.x - k, c.y), Offset(c.x + k, c.y), strokeWidth = 2.5f / z)
+                drawLine(mg, Offset(c.x, c.y - k), Offset(c.x, c.y + k), strokeWidth = 2.5f / z)
+                drawCircle(mg, k * 0.7f, c, style = Stroke(2.5f / z))
             }
 
             // posisi GPS
@@ -963,6 +980,7 @@ fun MapsDialog(
                     OutlinedButton(onClick = onImage) { Text("Gambar/GeoTIFF") }
                     OutlinedButton(onClick = onUrl) { Text("URL") }
                     OutlinedButton(onClick = onQr) { Text("QR") }
+                    OutlinedButton(onClick = { scope.launch { st.addBasemap() }; onClose() }) { Text("Peta Indonesia") }
                 }
                 if (st.store.maps.isEmpty()) Text("Belum ada peta tersimpan.", style = MaterialTheme.typography.bodySmall)
                 st.store.maps.forEach { m ->

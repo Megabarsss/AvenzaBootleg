@@ -56,6 +56,12 @@ object Exporter {
         append("</gpx>\n")
     }
 
+    /** ARGB (0xAARRGGBB) -> warna KML "aabbggrr". */
+    fun kmlColor(c: Long): String {
+        val r = (c shr 16) and 0xFF; val g = (c shr 8) and 0xFF; val b = c and 0xFF
+        return "ff%02x%02x%02x".format(b, g, r)
+    }
+
     fun toKml(layers: List<Layer>, feats: List<Feature>): String = buildString {
         fun coords(pts: List<Pt>) =
             pts.joinToString(" ") { "${it.lon},${it.lat},${if (it.ele.isNaN()) 0 else it.ele}" }
@@ -68,6 +74,10 @@ object Exporter {
             for (f in fs) {
                 append("<Placemark><name>${esc(f.name)}</name>")
                 if (f.notes.isNotBlank()) append("<description>${esc(f.notes)}</description>")
+                val kc = kmlColor(if (f.color != 0L) f.color else l.color)
+                val lw = when (f.width) { 1 -> 2; 2 -> 4; 3 -> 8; else -> 3 }
+                append("<Style><IconStyle><color>$kc</color></IconStyle><LineStyle><color>$kc</color><width>$lw</width></LineStyle>")
+                append("<PolyStyle><color>66${kc.substring(2)}</color></PolyStyle></Style>")
                 if (f.attrs.isNotEmpty()) {
                     append("<ExtendedData>")
                     f.attrs.forEach { (k, v) -> append("<Data name=\"${esc(k)}\"><value>${esc(v)}</value></Data>") }
@@ -255,6 +265,10 @@ object BundleImport {
             when {
                 isZip(bytes) && depth < 3 -> parseZip(name, bytes, base, depth, res)
                 isShp(bytes) -> addShp(base, bytes, null, null, res)
+                name.endsWith(".csv", true) || name.endsWith(".txt", true) -> {
+                    val raws = CsvPoints.parse(bytes.decodeToString())
+                    if (raws.isNotEmpty()) res.layers += Pair(base, raws) else res.warnings += "$base: kolom lat/lon tidak ditemukan"
+                }
                 else -> {
                     val head = bytes.decodeToString(0, minOf(bytes.size, 2000))
                     val raws = if (head.contains("<gpx")) Importer.parseGpx(java.io.ByteArrayInputStream(bytes))
@@ -298,7 +312,7 @@ object BundleImport {
         for ((path, data) in entries) {
             val l = path.lowercase()
             when {
-                l.endsWith(".kml") || l.endsWith(".gpx") || l.endsWith(".kmz") || l.endsWith(".zip") -> parse(path, data, base, depth + 1, res)
+                l.endsWith(".kml") || l.endsWith(".gpx") || l.endsWith(".kmz") || l.endsWith(".zip") || l.endsWith(".csv") -> parse(path, data, base, depth + 1, res)
                 l.endsWith(".shp") -> {
                     val s = stem(path).lowercase()
                     val dbf = entries.entries.firstOrNull { it.key.lowercase() == "$s.dbf" }?.value
@@ -308,5 +322,47 @@ object BundleImport {
                 }
             }
         }
+    }
+}
+
+/** Impor titik dari CSV: kolom lat/lon (atau y/x, lintang/bujur), nama opsional; kolom lain masuk catatan. */
+object CsvPoints {
+    private fun split(line: String, sep: Char): List<String> {
+        val out = ArrayList<String>(); val sb = StringBuilder(); var q = false; var i = 0
+        while (i < line.length) {
+            val ch = line[i]
+            if (ch == '"') { if (q && i + 1 < line.length && line[i + 1] == '"') { sb.append('"'); i++ } else q = !q }
+            else if (ch == sep && !q) { out += sb.toString().trim(); sb.setLength(0) }
+            else sb.append(ch)
+            i++
+        }
+        out += sb.toString().trim()
+        return out
+    }
+
+    fun parse(text: String): List<RawFeature> {
+        val lines = text.removePrefix("\uFEFF").lines().filter { it.isNotBlank() }
+        if (lines.size < 2) return emptyList()
+        val sep = listOf(';', '\t', ',').maxByOrNull { c -> lines[0].count { it == c } } ?: ','
+        val head = split(lines[0], sep).map { it.lowercase() }
+        fun find(vararg names: String) = head.indexOfFirst { h -> names.any { h == it } }
+        val iLat = find("lat", "latitude", "lintang", "y")
+        val iLon = find("lon", "lng", "long", "longitude", "bujur", "x")
+        if (iLat < 0 || iLon < 0) return emptyList()
+        val iName = find("name", "nama", "label", "id", "kode")
+        val iEle = find("ele", "elev", "elevation", "alt", "z", "tinggi")
+        fun num(s: String) = (if (sep != ',') s.replace(',', '.') else s).toDoubleOrNull()
+        val out = ArrayList<RawFeature>()
+        for (k in 1 until lines.size) {
+            val c = split(lines[k], sep)
+            val lat = c.getOrNull(iLat)?.let { num(it) } ?: continue
+            val lon = c.getOrNull(iLon)?.let { num(it) } ?: continue
+            if (Math.abs(lat) > 90 || Math.abs(lon) > 180) continue
+            val nm = c.getOrNull(iName)?.takeIf { it.isNotBlank() } ?: "Titik $k"
+            val notes = head.indices.filter { it != iLat && it != iLon && it != iName && it != iEle && !c.getOrNull(it).isNullOrBlank() }
+                .joinToString("; ") { "${head[it]}=${c[it]}" }
+            out += RawFeature(nm, notes, FType.POINT, listOf(Pt(lat, lon, c.getOrNull(iEle)?.let { num(it) } ?: Double.NaN)))
+        }
+        return out
     }
 }
