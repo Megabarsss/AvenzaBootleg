@@ -44,6 +44,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -248,7 +261,7 @@ fun MapApp() {
         Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
             Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary, shadowElevation = 6.dp) {
                 Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { showMaps = true }) { Text("☰", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge) }
+                    IconButton(onClick = { showMaps = true }) { Icon(Icons.Filled.Menu, contentDescription = "Daftar peta", tint = MaterialTheme.colorScheme.onPrimary) }
                     Column(Modifier.weight(1f).clickable { showProjects = true }) {
                         Text(
                             st.currentMap?.name ?: "PDF Maps",
@@ -270,7 +283,7 @@ fun MapApp() {
                         Text("${st.page + 1}/${st.pageCount}", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
                         TextButton(onClick = { st.currentMapId?.let { id -> scope.launch { st.openMap(id, st.page + 1) } } }, enabled = st.page < st.pageCount - 1) { Text("▶", color = MaterialTheme.colorScheme.onPrimary) }
                     }
-                    TextButton(onClick = { showLayers = true }) { OneLine("Layer", MaterialTheme.colorScheme.onPrimary) }
+                    IconButton(onClick = { showLayers = true }) { Icon(Icons.Filled.List, contentDescription = "Layer", tint = MaterialTheme.colorScheme.onPrimary) }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
@@ -307,7 +320,7 @@ fun MapApp() {
                             shape = CircleShape,
                             color = panelColor,
                             shadowElevation = 6.dp,
-                        ) { Box(contentAlignment = Alignment.Center) { Text("◎", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) } }
+                        ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.LocationOn, contentDescription = "Posisi saya", tint = MaterialTheme.colorScheme.primary) } }
                     }
                 }
             }
@@ -318,7 +331,17 @@ fun MapApp() {
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp).animateContentSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(Modifier.fillMaxWidth()) { ScaleBar(st, Modifier.align(Alignment.CenterStart)) }
+            Box(Modifier.fillMaxWidth()) {
+                ScaleBar(st, Modifier.align(Alignment.BottomStart))
+                if (st.bitmap != null && st.mode == Mode.NONE) {
+                    FloatingActionButton(
+                        onClick = { st.changeMode(Mode.ADD_POINT) },
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) { Icon(Icons.Filled.Add, contentDescription = "Tambah titik") }
+                }
+            }
             if (l != null) {
                 Surface(Modifier.fillMaxWidth().clickable { st.cycleCoordFormat() }, shape = RoundedCornerShape(14.dp), color = panelColor, shadowElevation = 4.dp) {
                     Text(
@@ -388,11 +411,11 @@ fun MapApp() {
                 tonalElevation = 6.dp,
                 shadowElevation = 8.dp,
             ) {
-                Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = { showMaps = true }, Modifier.weight(1f), contentPadding = tight) { OneLine("Peta") }
-                    TextButton(onClick = { showLayers = true }, Modifier.weight(1f), contentPadding = tight) { OneLine("Layer") }
+                Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    NavItem(Icons.Filled.Place, "Peta", Modifier.weight(1f)) { showMaps = true }
+                    NavItem(Icons.Filled.List, "Layer", Modifier.weight(1f)) { showLayers = true }
                     Box(Modifier.weight(1f)) {
-                        TextButton(onClick = { toolsMenu = true }, Modifier.fillMaxWidth(), enabled = st.bitmap != null, contentPadding = tight) { OneLine("Alat ▴") }
+                        NavItem(Icons.Filled.Build, "Alat", Modifier.fillMaxWidth(), enabled = st.bitmap != null) { toolsMenu = true }
                         DropdownMenu(expanded = toolsMenu, onDismissRequest = { toolsMenu = false }) {
                             DropdownMenuItem(text = { Text("Format koordinat: $fmtLabel") }, onClick = { toolsMenu = false; st.cycleCoordFormat() })
             DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.changeMode(Mode.ADD_POINT) })
@@ -434,7 +457,7 @@ fun MapApp() {
                         }
                     }
                     Box(Modifier.weight(1f)) {
-                        TextButton(onClick = { dataMenu = true }, Modifier.fillMaxWidth(), contentPadding = tight) { OneLine("Data ▴") }
+                        NavItem(Icons.Filled.Share, "Data", Modifier.fillMaxWidth()) { dataMenu = true }
                         DropdownMenu(expanded = dataMenu, onDismissRequest = { dataMenu = false }) {
             DropdownMenuItem(text = { Text("Ekspor GPX") }, onClick = { dataMenu = false; gpxOut.launch("fitur.gpx") })
             DropdownMenuItem(text = { Text("Ekspor KML") }, onClick = { dataMenu = false; kmlOut.launch("fitur.kml") })
@@ -704,6 +727,18 @@ fun MapCanvas(st: AppState) {
             }
         }
     }
+    }
+}
+
+@Composable
+fun NavItem(icon: ImageVector, label: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    val col = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+    Column(
+        modifier.clip(RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, contentDescription = null, tint = col, modifier = Modifier.size(24.dp))
+        Text(label, color = col, fontSize = 11.sp, maxLines = 1, softWrap = false, fontWeight = FontWeight.Medium)
     }
 }
 

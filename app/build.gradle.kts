@@ -11,8 +11,8 @@ android {
         applicationId = "id.pdfmaps"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.6"
+        versionCode = 8
+        versionName = "0.7"
     }
     signingConfigs {
         // Kunci tetap supaya tiap versi bisa dipasang di atas versi sebelumnya tanpa uninstall
@@ -39,6 +39,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")

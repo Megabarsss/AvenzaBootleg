@@ -3,6 +3,11 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.7 (2026-11-12)
+- Antarmuka: ikon sungguhan menggantikan teks dan emoji (menu, layer, posisi saya).
+- Menu bawah baru: ikon + label (Peta, Layer, Alat, Data).
+- Tombol cepat (+) di kanan bawah untuk menambah titik dengan tap peta.
+
 ## v0.6 (2026-11-09)
 - APK kini ditandatangani dengan kunci tetap, jadi pembaruan berikutnya bisa dipasang di atas versi lama tanpa uninstall dan data tidak hilang.
 - PENTING: v0.6 memakai kunci baru, jadi pemasangan v0.6 pertama kali menggantikan v0.5 dan sebelumnya hanya setelah uninstall. Ekspor data penting dulu (Data > Ekspor). Setelah itu pembaruan aman.
