@@ -359,16 +359,12 @@ class AppState(val ctx: Context) {
         }
     }
 
+    /** Tombol pusatkan ala Google Maps: ke posisi GPS dan ikuti, sampai peta digeser manual. */
     fun toggleFollow() {
-        follow = !follow
-        if (osmMode) {
-            val l = loc
-            if (follow && l != null) osmGoto?.invoke(Pt(l.latitude, l.longitude))
-            if (follow && l == null) status = "GPS belum dapat sinyal"
-            return
-        }
-        if (follow) centerOnMe()
-        status = if (follow) "Ikuti posisi: aktif (ketuk lagi untuk mematikan)" else "Ikuti posisi: mati"
+        val l = loc
+        if (l == null) { status = "GPS belum dapat sinyal"; return }
+        follow = true
+        if (osmMode) osmGoto?.invoke(Pt(l.latitude, l.longitude)) else centerOnMe()
     }
 
     /** Loncat ke koordinat "lat, lon" (derajat desimal). */
@@ -427,6 +423,7 @@ class AppState(val ctx: Context) {
     fun toMap(s: Offset): Offset = rot(s - offset, -rotation) / zoom
 
     fun transformBy(centroid: Offset, pan: Offset, gz: Float, gr: Float = 0f) {
+        if (pan.getDistance() > 0.5f) follow = false
         val p = toMap(centroid)
         val nz = (zoom * gz).coerceIn(0.02f, 30f)
         if (!rotateLocked) rotation = ((rotation + gr) % 360f + 360f) % 360f

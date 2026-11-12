@@ -239,7 +239,7 @@ fun MapApp() {
         // ---------- Peta (layar penuh) ----------
         if (st.osmMode) {
             OsmMapView(st)
-            Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFFD81B60), modifier = Modifier.align(Alignment.Center).size(28.dp))
+            Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFFD81B60), modifier = Modifier.align(Alignment.Center).size(20.dp))
         } else if (st.bitmap != null) {
             MapCanvas(st)
         } else {
@@ -296,7 +296,7 @@ fun MapApp() {
             }
             Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (st.status.isNotBlank() && st.bitmap == null || st.navInfo() != null) {
+                    if ((st.status.isNotBlank() && st.bitmap == null && !st.osmMode) || st.navInfo() != null) {
                         Surface(
                             Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
@@ -320,17 +320,7 @@ fun MapApp() {
                         }
                     }
                 }
-                if (st.bitmap != null || st.osmMode) {
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (!st.osmMode) CompassButton(st)
-                        Surface(
-                            Modifier.size(48.dp).clickable { st.toggleFollow() },
-                            shape = CircleShape,
-                            color = if (st.follow) MaterialTheme.colorScheme.primary else panelColor,
-                            shadowElevation = 6.dp,
-                        ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.LocationOn, contentDescription = "Ikuti posisi saya", tint = if (st.follow) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary) } }
-                    }
-                }
+                if (st.bitmap != null && !st.osmMode) CompassButton(st)
             }
         }
 
@@ -342,16 +332,18 @@ fun MapApp() {
             Box(Modifier.fillMaxWidth()) {
                 if (!st.osmMode) ScaleBar(st, Modifier.align(Alignment.BottomStart))
                 if ((st.bitmap != null || st.osmMode) && st.mode == Mode.NONE) {
-                    FloatingActionButton(
-                        onClick = { if (st.osmMode) st.pendingPoint = st.osmCenter?.invoke() else st.changeMode(Mode.ADD_POINT) },
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ) { Icon(Icons.Filled.Add, contentDescription = "Tambah titik") }
+                    Column(Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LocateButton(st.follow) { st.toggleFollow() }
+                        FloatingActionButton(
+                            onClick = { if (st.osmMode) st.pendingPoint = st.osmCenter?.invoke() else st.changeMode(Mode.ADD_POINT) },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ) { Icon(Icons.Filled.Add, contentDescription = "Tambah titik") }
+                    }
                 }
             }
             if (l != null) {
-                Surface(Modifier.fillMaxWidth().clickable { st.cycleCoordFormat() }, shape = RoundedCornerShape(14.dp), color = panelColor, shadowElevation = 4.dp) {
+                Surface(Modifier.fillMaxWidth().clickable { st.cycleCoordFormat() }, shape = RoundedCornerShape(14.dp), color = panelColor, contentColor = MaterialTheme.colorScheme.onSurface, shadowElevation = 4.dp) {
                     Text(
                         "$fmtLabel  ${GeoMath.fmtCoord(l.latitude, l.longitude, st.store.coordFormat)}  ±%.0f m".format(l.accuracy),
                         Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
@@ -416,6 +408,7 @@ fun MapApp() {
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
                 color = panelColor,
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 tonalElevation = 6.dp,
                 shadowElevation = 8.dp,
             ) {
@@ -751,6 +744,32 @@ fun MapCanvas(st: AppState) {
             }
         }
     }
+    }
+}
+
+/** Tombol "pusatkan ke posisi saya" ala Google Maps; biru penuh saat peta mengikuti GPS. */
+@Composable
+fun LocateButton(active: Boolean, onClick: () -> Unit) {
+    val blue = Color(0xFF1A73E8)
+    val ring = if (active) blue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+    Surface(
+        Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 6.dp,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = center
+            val r = size.minDimension * 0.22f
+            drawCircle(ring, r, c, style = Stroke(size.minDimension * 0.045f))
+            drawCircle(if (active) blue else ring, r * 0.5f, c)
+            val k = r * 1.45f
+            val w = size.minDimension * 0.045f
+            drawLine(ring, Offset(c.x, c.y - k), Offset(c.x, c.y - r), strokeWidth = w)
+            drawLine(ring, Offset(c.x, c.y + r), Offset(c.x, c.y + k), strokeWidth = w)
+            drawLine(ring, Offset(c.x - k, c.y), Offset(c.x - r, c.y), strokeWidth = w)
+            drawLine(ring, Offset(c.x + r, c.y), Offset(c.x + k, c.y), strokeWidth = w)
+        }
     }
 }
 

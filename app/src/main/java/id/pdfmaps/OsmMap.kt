@@ -32,12 +32,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
 import org.mapsforge.core.graphics.Paint
 import org.mapsforge.core.graphics.Style
+import org.mapsforge.core.model.BoundingBox
 import org.mapsforge.core.model.LatLong
+import org.mapsforge.core.model.Point
+import org.mapsforge.core.util.MercatorProjection
 import org.mapsforge.map.android.graphics.AndroidGraphicFactory
 import org.mapsforge.map.android.util.AndroidUtil
 import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.datastore.MultiMapDataStore
-import org.mapsforge.map.layer.overlay.Circle
 import org.mapsforge.map.layer.overlay.FixedPixelCircle
 import org.mapsforge.map.layer.overlay.Polygon
 import org.mapsforge.map.layer.overlay.Polyline
@@ -191,8 +193,8 @@ fun OsmDialog(st: AppState, onClose: () -> Unit) {
 private class OsmHolder(val mapView: MapView) {
     var featLayers: List<org.mapsforge.map.layer.Layer> = emptyList()
     var storeRef: Store? = null
-    var gpsDot: FixedPixelCircle? = null
-    var gpsAcc: Circle? = null
+    var gps: GpsLayer? = null
+    var locRef: android.location.Location? = null
 }
 
 private fun osmPaint(color: Int, width: Float, style: Style): Paint =
@@ -201,6 +203,48 @@ private fun osmPaint(color: Int, width: Float, style: Style): Paint =
         setStrokeWidth(width)
         setStyle(style)
     }
+
+/** Titik posisi GPS: lingkaran akurasi, kerucut arah hadap, titik biru berukuran tetap di layar. */
+private class GpsLayer(val dens: Float) : org.mapsforge.map.layer.Layer() {
+    @Volatile var pos: LatLong? = null
+    @Volatile var acc = 0f
+    @Volatile var heading: Float? = null
+    private val accFill = osmPaint(0x241A73E8, 0f, Style.FILL)
+    private val accStroke = osmPaint(0x731A73E8, 1.5f * dens, Style.STROKE)
+    private val cone = osmPaint(0x4D1A73E8, 0f, Style.FILL)
+    private val shadow = osmPaint(0x33000000, 0f, Style.FILL)
+    private val white = osmPaint(0xFFFFFFFF.toInt(), 0f, Style.FILL)
+    private val blue = osmPaint(0xFF1A73E8.toInt(), 0f, Style.FILL)
+
+    override fun draw(boundingBox: BoundingBox, zoomLevel: Byte, canvas: org.mapsforge.core.graphics.Canvas, topLeftPoint: Point) {
+        val p = pos ?: return
+        val mapSize = MercatorProjection.getMapSize(zoomLevel, displayModel.tileSize)
+        val x = (MercatorProjection.longitudeToPixelX(p.longitude, mapSize) - topLeftPoint.x).toFloat()
+        val y = (MercatorProjection.latitudeToPixelY(p.latitude, mapSize) - topLeftPoint.y).toFloat()
+        val r = 5.5f * dens
+        val accPx = MercatorProjection.metersToPixels(acc, p.latitude, mapSize).toFloat()
+        if (accPx > r * 1.8f) {
+            canvas.drawCircle(x.toInt(), y.toInt(), accPx.toInt(), accFill)
+            canvas.drawCircle(x.toInt(), y.toInt(), accPx.toInt(), accStroke)
+        }
+        heading?.let { h ->
+            val a0 = Math.toRadians(h.toDouble())
+            val half = Math.toRadians(32.0)
+            val rad = r * 5.5f
+            val path = AndroidGraphicFactory.INSTANCE.createPath()
+            path.moveTo(x, y)
+            for (i in 0..8) {
+                val ang = a0 - half + (2 * half) * i / 8.0
+                path.lineTo(x + (Math.sin(ang) * rad).toFloat(), y - (Math.cos(ang) * rad).toFloat())
+            }
+            path.close()
+            canvas.drawPath(path, cone)
+        }
+        canvas.drawCircle(x.toInt(), y.toInt(), (r * 1.6f).toInt(), shadow)
+        canvas.drawCircle(x.toInt(), y.toInt(), (r * 1.4f).toInt(), white)
+        canvas.drawCircle(x.toInt(), y.toInt(), r.toInt(), blue)
+    }
+}
 
 /** Tampilan peta jalan offline dengan posisi GPS dan semua fitur dari layer yang terlihat. */
 @Composable
@@ -236,11 +280,18 @@ fun OsmMapView(st: AppState) {
         } else {
             mv.setCenter(bb.centerPoint); mv.setZoomLevel(8.toByte())
         }
+        mv.addInputListener(object : org.mapsforge.map.view.InputListener {
+            override fun onMoveEvent() { st.follow = false }
+            override fun onZoomEvent() {}
+        })
         OsmHolder(mv)
     }
     DisposableEffect(holder) {
         st.osmCenter = { holder.mapView.model.mapViewPosition.center.let { Pt(it.latitude, it.longitude) } }
-        st.osmGoto = { p -> holder.mapView.setCenter(LatLong(p.lat, p.lon)) }
+        st.osmGoto = { p ->
+            holder.mapView.setCenter(LatLong(p.lat, p.lon))
+            if (holder.mapView.model.mapViewPosition.zoomLevel < 14) holder.mapView.setZoomLevel(16.toByte())
+        }
         onDispose {
             st.osmCenter = null
             st.osmGoto = null
@@ -250,6 +301,7 @@ fun OsmMapView(st: AppState) {
     val store = st.store
     val loc = st.loc
     val follow = st.follow
+    val heading = st.heading
     AndroidView(factory = { holder.mapView }, modifier = Modifier.fillMaxSize(), update = { mv ->
         val layers = mv.layerManager.layers
         if (holder.storeRef !== store) {
@@ -265,8 +317,8 @@ fun OsmMapView(st: AppState) {
                     val pts = f.pts.map { LatLong(it.lat, it.lon) }
                     when (f.type) {
                         FType.POINT -> out += FixedPixelCircle(
-                            pts[0], 7f * dens, osmPaint(col, 0f, Style.FILL), osmPaint(0xFFFFFFFF.toInt(), 2.5f * dens, Style.STROKE),
-                        )
+                            pts[0], 5f * dens, osmPaint(col, 0f, Style.FILL), osmPaint(0xFFFFFFFF.toInt(), 2f * dens, Style.STROKE),
+                        ).apply { setScaleRadius(false) }
                         FType.AREA -> out += Polygon(
                             osmPaint((col and 0x00FFFFFF) or 0x44000000, 0f, Style.FILL), osmPaint(col, w, Style.STROKE), gf,
                         ).apply { setPoints(pts) }
@@ -278,28 +330,23 @@ fun OsmMapView(st: AppState) {
             holder.featLayers = out
             holder.storeRef = store
             // titik GPS selalu di atas fitur
-            holder.gpsAcc?.let { layers.remove(it, false) }
-            holder.gpsDot?.let { layers.remove(it, false) }
-            holder.gpsAcc = null
-            holder.gpsDot = null
+            holder.gps?.let { layers.remove(it, false) }
+            val g = holder.gps ?: GpsLayer(dens)
+            layers.add(g, false)
+            holder.gps = g
+            mv.layerManager.redrawLayers()
         }
-        if (loc != null) {
-            val ll = LatLong(loc.latitude, loc.longitude)
-            val blue = 0xFF1A73E8.toInt()
-            if (holder.gpsDot == null) {
-                val acc = Circle(ll, loc.accuracy, osmPaint(0x241A73E8, 0f, Style.FILL), osmPaint(0x731A73E8, 1.5f * dens, Style.STROKE))
-                val dot = FixedPixelCircle(ll, 7.5f * dens, osmPaint(blue, 0f, Style.FILL), osmPaint(0xFFFFFFFF.toInt(), 3f * dens, Style.STROKE))
-                layers.add(acc, false)
-                layers.add(dot, false)
-                holder.gpsAcc = acc
-                holder.gpsDot = dot
-            } else {
-                holder.gpsAcc?.setLatLong(ll)
-                holder.gpsAcc?.setRadius(loc.accuracy)
-                holder.gpsDot?.setLatLong(ll)
+        val g = holder.gps
+        if (g != null) {
+            if (loc != null) {
+                val ll = LatLong(loc.latitude, loc.longitude)
+                g.pos = ll
+                g.acc = loc.accuracy
+                if (follow && holder.locRef !== loc) mv.setCenter(ll)
+                holder.locRef = loc
             }
-            if (follow) mv.setCenter(ll)
+            g.heading = heading
+            g.requestRedraw()
         }
-        mv.layerManager.redrawLayers()
     })
 }

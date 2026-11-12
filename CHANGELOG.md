@@ -3,6 +3,12 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.9.1 (2026-11-12)
+- Tombol pusatkan ala Google Maps di kanan bawah (di atas tombol +): ketuk untuk ke posisi GPS dan mengikuti; geser peta untuk berhenti mengikuti. Berlaku di peta jalan dan peta PDF.
+- Peta jalan: titik posisi kini berukuran tetap dan kecil (tidak membesar saat zoom out), dengan kerucut arah hadap dan lingkaran akurasi.
+- Peta jalan: titik fitur diperkecil; tanda silang tengah diperkecil.
+- Perbaikan: teks bar koordinat tidak terbaca di tema gelap; pesan "Tap Peta untuk mengimpor PDF" tidak lagi muncul di peta jalan.
+
 ## v0.9 (2026-11-12)
 - Peta jalan offline (OpenStreetMap, sampai jalan kecil): unduh dari dalam aplikasi lewat Peta > "Peta jalan offline (unduh)". Pilih per pulau (Jawa 880 MB, Sumatra 295 MB, Nusa Tenggara 175 MB, Sulawesi 171 MB, Kalimantan 160 MB, Papua 59 MB, Maluku 50 MB) atau seluruh Indonesia (1,7 GB). Unduhan berjalan di latar belakang dan bisa dilanjutkan.
 - Di peta jalan: posisi GPS dengan lingkaran akurasi, mode ikuti posisi, semua fitur dari layer yang terlihat, dan tombol (+) untuk menaruh titik di tengah layar (tanda silang).
