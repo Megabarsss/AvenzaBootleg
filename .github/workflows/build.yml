@@ -53,6 +53,7 @@ jobs:
             --target "$GITHUB_SHA" --title "PdfMaps v${VER}" \
             --notes "${NOTES:-Debug APK dari commit $GITHUB_SHA}"
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest "out/PdfMaps-v${VER}.apk" \
+          cp "out/PdfMaps-v${VER}.apk" out/PdfMaps.apk
+          gh release create latest "out/PdfMaps-v${VER}.apk" out/PdfMaps.apk \
             --target "$GITHUB_SHA" --title "PdfMaps terbaru (v${VER})" \
             --notes "Versi terbaru: v${VER}. Riwayat: CHANGELOG.md"
