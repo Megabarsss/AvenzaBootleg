@@ -3,6 +3,12 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.9 (2026-11-12)
+- Peta jalan offline (OpenStreetMap, sampai jalan kecil): unduh dari dalam aplikasi lewat Peta > "Peta jalan offline (unduh)". Pilih per pulau (Jawa 880 MB, Sumatra 295 MB, Nusa Tenggara 175 MB, Sulawesi 171 MB, Kalimantan 160 MB, Papua 59 MB, Maluku 50 MB) atau seluruh Indonesia (1,7 GB). Unduhan berjalan di latar belakang dan bisa dilanjutkan.
+- Di peta jalan: posisi GPS dengan lingkaran akurasi, mode ikuti posisi, semua fitur dari layer yang terlihat, dan tombol (+) untuk menaruh titik di tengah layar (tanda silang).
+- Belum ada di peta jalan: alat ukur, kompas/rotasi, dan ketuk fitur untuk mengedit. Gunakan peta PDF/GeoTIFF untuk itu.
+- Data peta © kontributor OpenStreetMap; file dari download.mapsforge.org.
+
 ## v0.8 (2026-11-12)
 - Peta dasar Indonesia bawaan (offline, sudah di dalam APK): garis pantai, batas provinsi, dan kota utama. Buka lewat Peta > "Peta Indonesia". Peta ikhtisar (sekitar 1,7 km per piksel), bukan peta jalan detail. Sumber: Natural Earth (domain publik).
 - Ikuti posisi: tombol posisi saya kini menyalakan/mematikan mode peta mengikuti GPS.

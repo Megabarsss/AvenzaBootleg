@@ -164,6 +164,10 @@ class AppState(val ctx: Context) {
     var moveId by mutableStateOf<String?>(null)
     var follow by mutableStateOf(false)
     var gotoPt by mutableStateOf<Pt?>(null)
+    var osmMode by mutableStateOf(false)      // peta jalan offline (OpenStreetMap)
+    var osmVersion by mutableStateOf(0)
+    var osmCenter: (() -> Pt)? = null
+    var osmGoto: ((Pt) -> Unit)? = null
     var selectedId by mutableStateOf<String?>(null)
     var detail by mutableStateOf<Detail?>(null)
     var btName by mutableStateOf<String?>(null)
@@ -258,6 +262,7 @@ class AppState(val ctx: Context) {
             autoPoints = r.autoPoints
             pageCount = r.pageCount
             currentMapId = id
+            osmMode = false
             baseScale = r.scale
             detail = null
             page = pageIdx.coerceIn(0, r.pageCount - 1)
@@ -356,6 +361,12 @@ class AppState(val ctx: Context) {
 
     fun toggleFollow() {
         follow = !follow
+        if (osmMode) {
+            val l = loc
+            if (follow && l != null) osmGoto?.invoke(Pt(l.latitude, l.longitude))
+            if (follow && l == null) status = "GPS belum dapat sinyal"
+            return
+        }
         if (follow) centerOnMe()
         status = if (follow) "Ikuti posisi: aktif (ketuk lagi untuk mematikan)" else "Ikuti posisi: mati"
     }

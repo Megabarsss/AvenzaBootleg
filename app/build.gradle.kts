@@ -11,8 +11,8 @@ android {
         applicationId = "id.pdfmaps"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.8"
+        versionCode = 10
+        versionName = "0.9"
     }
     signingConfigs {
         // Kunci tetap supaya tiap versi bisa dipasang di atas versi sebelumnya tanpa uninstall
@@ -44,4 +44,11 @@ dependencies {
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Peta jalan offline (OpenStreetMap / Mapsforge)
+    implementation("org.mapsforge:mapsforge-core:0.21.0")
+    implementation("org.mapsforge:mapsforge-map:0.21.0")
+    implementation("org.mapsforge:mapsforge-map-reader:0.21.0")
+    implementation("org.mapsforge:mapsforge-themes:0.21.0")
+    implementation("org.mapsforge:mapsforge-map-android:0.21.0")
+    implementation("com.caverock:androidsvg:1.4")
 }

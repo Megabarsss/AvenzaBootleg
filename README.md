@@ -45,4 +45,4 @@ Buka folder ini di Android Studio (Koala atau lebih baru), sync Gradle, lalu Run
 - Ikon aplikasi (adaptive icon) di app/src/main/res.
 
 
-Riwayat versi: lihat [CHANGELOG.md](CHANGELOG.md). Versi saat ini: 0.8.
+Riwayat versi: lihat [CHANGELOG.md](CHANGELOG.md). Versi saat ini: 0.9.

@@ -5,4 +5,9 @@ import android.app.Application
 /** State aplikasi hidup di level Application agar track dan geofence tetap jalan saat layar mati. */
 class PdfMapsApp : Application() {
     val state: AppState by lazy { AppState(applicationContext) }
+
+    override fun onCreate() {
+        super.onCreate()
+        org.mapsforge.map.android.graphics.AndroidGraphicFactory.createInstance(this)
+    }
 }

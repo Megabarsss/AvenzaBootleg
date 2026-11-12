@@ -142,6 +142,7 @@ fun MapApp() {
     var showUnit by remember { mutableStateOf(false) }
     var showProjects by remember { mutableStateOf(false) }
     var showGoto by remember { mutableStateOf(false) }
+    var showOsm by remember { mutableStateOf(false) }
     var showSaveDraft by remember { mutableStateOf(false) }
     var toolsMenu by remember { mutableStateOf(false) }
     var dataMenu by remember { mutableStateOf(false) }
@@ -236,7 +237,10 @@ fun MapApp() {
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
         // ---------- Peta (layar penuh) ----------
-        if (st.bitmap != null) {
+        if (st.osmMode) {
+            OsmMapView(st)
+            Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFFD81B60), modifier = Modifier.align(Alignment.Center).size(28.dp))
+        } else if (st.bitmap != null) {
             MapCanvas(st)
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -256,6 +260,7 @@ fun MapApp() {
                     )
                     Button(onClick = { showMaps = true }) { Text("Impor peta") }
                     OutlinedButton(onClick = { scope.launch { st.addBasemap() } }, Modifier.padding(top = 8.dp)) { Text("Buka peta Indonesia") }
+                    OutlinedButton(onClick = { showOsm = true }, Modifier.padding(top = 8.dp)) { Text("Peta jalan offline") }
                 }
             }
         }
@@ -267,7 +272,7 @@ fun MapApp() {
                     IconButton(onClick = { showMaps = true }) { Icon(Icons.Filled.Menu, contentDescription = "Daftar peta", tint = MaterialTheme.colorScheme.onPrimary) }
                     Column(Modifier.weight(1f).clickable { showProjects = true }) {
                         Text(
-                            st.currentMap?.name ?: "PDF Maps",
+                            if (st.osmMode) "Peta jalan offline" else st.currentMap?.name ?: "PDF Maps",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimary,
@@ -315,9 +320,9 @@ fun MapApp() {
                         }
                     }
                 }
-                if (st.bitmap != null) {
+                if (st.bitmap != null || st.osmMode) {
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        CompassButton(st)
+                        if (!st.osmMode) CompassButton(st)
                         Surface(
                             Modifier.size(48.dp).clickable { st.toggleFollow() },
                             shape = CircleShape,
@@ -335,10 +340,10 @@ fun MapApp() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Box(Modifier.fillMaxWidth()) {
-                ScaleBar(st, Modifier.align(Alignment.BottomStart))
-                if (st.bitmap != null && st.mode == Mode.NONE) {
+                if (!st.osmMode) ScaleBar(st, Modifier.align(Alignment.BottomStart))
+                if ((st.bitmap != null || st.osmMode) && st.mode == Mode.NONE) {
                     FloatingActionButton(
-                        onClick = { st.changeMode(Mode.ADD_POINT) },
+                        onClick = { if (st.osmMode) st.pendingPoint = st.osmCenter?.invoke() else st.changeMode(Mode.ADD_POINT) },
                         modifier = Modifier.align(Alignment.BottomEnd),
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -418,7 +423,7 @@ fun MapApp() {
                     NavItem(Icons.Filled.Place, "Peta", Modifier.weight(1f)) { showMaps = true }
                     NavItem(Icons.Filled.List, "Layer", Modifier.weight(1f)) { showLayers = true }
                     Box(Modifier.weight(1f)) {
-                        NavItem(Icons.Filled.Build, "Alat", Modifier.fillMaxWidth(), enabled = st.bitmap != null) { toolsMenu = true }
+                        NavItem(Icons.Filled.Build, "Alat", Modifier.fillMaxWidth(), enabled = st.bitmap != null && !st.osmMode) { toolsMenu = true }
                         DropdownMenu(expanded = toolsMenu, onDismissRequest = { toolsMenu = false }) {
                             DropdownMenuItem(text = { Text("Format koordinat: $fmtLabel") }, onClick = { toolsMenu = false; st.cycleCoordFormat() })
             DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.changeMode(Mode.ADD_POINT) })
@@ -484,6 +489,7 @@ fun MapApp() {
             onImage = { imgPicker.launch(arrayOf("image/*", "application/octet-stream")); showMaps = false },
             onQr = { showMaps = false; qrScanner.launch(ScanOptions().setPrompt("Arahkan ke QR peta").setBeepEnabled(false)) },
             onUrl = { showMaps = false; showUrl = true },
+            onOsm = { showMaps = false; showOsm = true },
             onClose = { showMaps = false },
         )
     }
@@ -491,6 +497,7 @@ fun MapApp() {
     if (showBt) BtDialog(st) { showBt = false }
     if (showUnit) UnitDialog(st) { showUnit = false }
     if (showProjects) ProjectsDialog(st, scope) { showProjects = false }
+    if (showOsm) OsmDialog(st) { showOsm = false }
     if (showGoto) TextInputDialog("Ke koordinat", "lintang, bujur (mis. -6.2, 106.8)", "", { v -> st.goTo(v); showGoto = false }, { showGoto = false })
     if (showUrl) {
         TextInputDialog("Impor dari URL", "https://…/peta.pdf", "", { u ->
@@ -967,6 +974,7 @@ fun MapsDialog(
     onPdf: () -> Unit,
     onImage: () -> Unit,
     onUrl: () -> Unit,
+    onOsm: () -> Unit,
     onQr: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -981,6 +989,9 @@ fun MapsDialog(
                     OutlinedButton(onClick = onUrl) { Text("URL") }
                     OutlinedButton(onClick = onQr) { Text("QR") }
                     OutlinedButton(onClick = { scope.launch { st.addBasemap() }; onClose() }) { Text("Peta Indonesia") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onOsm) { Text("Peta jalan offline (unduh)") }
                 }
                 if (st.store.maps.isEmpty()) Text("Belum ada peta tersimpan.", style = MaterialTheme.typography.bodySmall)
                 st.store.maps.forEach { m ->
