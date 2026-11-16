@@ -214,6 +214,12 @@ fun MapApp() {
     val kmlOut = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { u ->
         scope.launch { st.exportTo(u, "kml") }
     }
+    val backupOut = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { u ->
+        scope.launch { st.backupProject(u) }
+    }
+    val restoreIn = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        scope.launch { st.restoreProject(u) }
+    }
     val csvOut = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { u ->
         scope.launch { st.exportTo(u, "csv") }
     }
@@ -494,7 +500,11 @@ fun MapApp() {
     if (showLayers) LayersDialog(st) { showLayers = false }
     if (showBt) BtDialog(st) { showBt = false }
     if (showUnit) UnitDialog(st) { showUnit = false }
-    if (showProjects) ProjectsDialog(st, scope) { showProjects = false }
+    if (showProjects) ProjectsDialog(
+        st, scope,
+        onBackup = { showProjects = false; backupOut.launch(st.activeProject.name.replace(Regex("[^A-Za-z0-9_-]+"), "_") + "_cadangan.zip") },
+        onRestore = { showProjects = false; restoreIn.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+    ) { showProjects = false }
     if (showOsm) OsmDialog(st) { showOsm = false }
     if (showGoto) TextInputDialog("Ke koordinat", "lintang, bujur (mis. -6.2, 106.8)", "", { v -> st.goTo(v); showGoto = false }, { showGoto = false })
     if (showUrl) {
@@ -857,7 +867,7 @@ fun ScaleBar(st: AppState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onClose: () -> Unit) {
+fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onBackup: () -> Unit, onRestore: () -> Unit, onClose: () -> Unit) {
     var newName by remember { mutableStateOf("") }
     var renameId by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -890,6 +900,12 @@ fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onClo
                     OutlinedTextField(newName, { newName = it }, label = { Text("Nama proyek baru") }, singleLine = true, modifier = Modifier.weight(1f))
                     TextButton(onClick = { scope.launch { st.createProject(newName) }; onClose() }) { OneLine("Buat") }
                 }
+                Text("Cadangan", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onBackup) { OneLine("Cadangkan proyek ini") }
+                    OutlinedButton(onClick = onRestore) { OneLine("Pulihkan") }
+                }
+                Text("Cadangan berisi data, file peta, dan foto proyek dalam satu ZIP.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text("Tutup") } },

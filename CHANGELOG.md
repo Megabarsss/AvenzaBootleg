@@ -3,6 +3,11 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.11 (2026-11-16)
+- Shapefile UTM langsung terbaca (zona dibaca dari file .prj, datum WGS84). Proyeksi lain masih perlu diubah ke WGS84 dulu.
+- Ekspor Shapefile kini membawa kolom COLOR (warna fitur, format #RRGGBB).
+- Cadangan proyek: ketuk nama proyek > "Cadangkan proyek ini" untuk menyimpan data, file peta, dan foto ke satu ZIP; "Pulihkan" memasukkannya sebagai proyek baru (juga di HP lain).
+
 ## v0.10 (2026-11-16)
 - Peta jalan kini punya alat lengkap: tambah titik dengan tap, ukur jarak/garis, ukur luas/area, penggaris, pindah titik, ke koordinat, dan navigasi (garis ke tujuan).
 - Peta jalan: ketuk fitur untuk membuka dan mengeditnya; ketuk tempat kosong untuk melihat koordinat.

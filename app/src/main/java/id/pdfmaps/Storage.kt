@@ -71,6 +71,8 @@ object Storage {
         }
     }
 
+    fun rawFile(ctx: Context, pid: String): File = file(ctx, pid)
+
     fun delete(ctx: Context, pid: String) {
         try { file(ctx, pid).delete() } catch (_: Exception) {}
     }

@@ -282,11 +282,15 @@ object BundleImport {
     }
 
     private fun addShp(base: String, shp: ByteArray, dbf: ByteArray?, prj: ByteArray?, res: Result) {
+        var utm: Pair<Int, Boolean>? = null
         if (prj != null && prj.decodeToString().contains("PROJCS")) {
-            res.warnings += "$base: shapefile berproyeksi, ubah dulu ke WGS84"
-            return
+            utm = ShpPrj.utm(prj.decodeToString())
+            if (utm == null) {
+                res.warnings += "$base: proyeksi bukan UTM/WGS84, ubah dulu ke WGS84"
+                return
+            }
         }
-        val raws = ShpReader.parse(shp, dbf)
+        val raws = ShpReader.parse(shp, dbf, utm)
         if (raws.isNotEmpty()) res.layers += Pair(base, raws) else res.warnings += "$base: tidak ada fitur"
     }
 

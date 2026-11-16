@@ -341,6 +341,92 @@ class AppState(val ctx: Context) {
         }
     }
 
+    /** Cadangkan proyek aktif (data, file peta, foto) ke satu file ZIP. */
+    suspend fun backupProject(uri: Uri?) {
+        if (uri == null) return
+        try {
+            Storage.save(ctx, activeProjectId, store)
+            val s = store
+            val name = activeProject.name
+            val pid = activeProjectId
+            var n = 0
+            withContext(Dispatchers.IO) {
+                java.util.zip.ZipOutputStream(ctx.contentResolver.openOutputStream(uri)!!.buffered()).use { z ->
+                    fun put(path: String, f: File) {
+                        if (!f.exists()) return
+                        z.putNextEntry(java.util.zip.ZipEntry(path))
+                        f.inputStream().use { it.copyTo(z) }
+                        z.closeEntry()
+                        n++
+                    }
+                    z.putNextEntry(java.util.zip.ZipEntry("pdfmaps-backup.txt"))
+                    z.write(name.toByteArray())
+                    z.closeEntry()
+                    put("store.json", Storage.rawFile(ctx, pid))
+                    s.maps.forEach { put("maps/${it.file}", File(ctx.filesDir, "maps/${it.file}")) }
+                    s.features.mapNotNull { it.photo }.distinct().forEach { put("photos/$it", File(ctx.filesDir, "photos/$it")) }
+                }
+            }
+            status = "Cadangan proyek \"$name\" tersimpan ($n file)"
+        } catch (ex: Exception) {
+            status = "Gagal mencadangkan: ${ex.message}"
+        }
+    }
+
+    /** Pulihkan cadangan sebagai proyek baru (tidak menimpa proyek yang ada). */
+    suspend fun restoreProject(uri: Uri?) {
+        if (uri == null) return
+        if (recording) { status = "Hentikan rekam track dulu"; return }
+        try {
+            var name = "Proyek pulihan"
+            var json: String? = null
+            val rename = HashMap<String, String>()
+            withContext(Dispatchers.IO) {
+                ZipInputStream(ctx.contentResolver.openInputStream(uri)!!.buffered()).use { z ->
+                    var en = z.nextEntry
+                    while (en != null) {
+                        val p = en.name
+                        when {
+                            p == "pdfmaps-backup.txt" -> name = z.readBytes().decodeToString().trim().ifBlank { name }
+                            p == "store.json" -> json = z.readBytes().decodeToString()
+                            (p.startsWith("maps/") || p.startsWith("photos/")) && !p.contains("..") && !en.isDirectory -> {
+                                val dirName = p.substringBefore('/')
+                                val old = p.substringAfter('/')
+                                if (old.isNotBlank() && !old.contains('/')) {
+                                    val ext = old.substringAfterLast('.', "")
+                                    val neu = UUID.randomUUID().toString() + (if (ext.isNotEmpty()) ".$ext" else "")
+                                    val dir = File(ctx.filesDir, dirName).apply { mkdirs() }
+                                    File(dir, neu).outputStream().use { z.copyTo(it) }
+                                    rename[old] = neu
+                                }
+                            }
+                        }
+                        en = z.nextEntry
+                    }
+                }
+            }
+            var js = json
+            if (js == null) {
+                rename.forEach { (_, neu) -> File(ctx.filesDir, "maps/$neu").delete(); File(ctx.filesDir, "photos/$neu").delete() }
+                status = "Bukan file cadangan PDF Maps"
+                return
+            }
+            rename.forEach { (old, neu) -> js = js!!.replace("\"$old\"", "\"$neu\"") }
+            val id = UUID.randomUUID().toString().take(8)
+            withContext(Dispatchers.IO) { Storage.rawFile(ctx, id).writeText(js!!) }
+            val names = projects.map { it.name }.toSet()
+            var nm = name
+            var k = 2
+            while (nm in names) nm = "$name (${k++})"
+            projects = projects + Project(id, nm)
+            saveIndex()
+            switchProject(id)
+            status = "Proyek \"$nm\" dipulihkan (${rename.size} file)"
+        } catch (ex: Exception) {
+            status = "Gagal memulihkan: ${ex.message}"
+        }
+    }
+
     /** Peta dasar Indonesia bawaan (GeoTIFF di dalam APK, tanpa internet). */
     suspend fun addBasemap() {
         try {

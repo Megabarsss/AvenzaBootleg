@@ -119,6 +119,10 @@ object Shapefile {
         fields.add(Field("LAYER", 40) { f -> layers.firstOrNull { it.id == f.layerId }?.name ?: "" })
         fields.add(Field("NOTES", 200) { it.notes })
         fields.add(Field("TYPE", 10) { typeLabel(it.type) })
+        fields.add(Field("COLOR", 9) { f ->
+            val c = if (f.color != 0L) f.color else (layers.firstOrNull { it.id == f.layerId }?.color ?: 0L)
+            "#%06X".format(c and 0xFFFFFF)
+        })
         val used = fields.map { it.name }.toMutableSet()
         for (attr in layers.flatMap { it.fields }.distinct().take(20)) {
             var n = attr.uppercase().map { if (it.isLetterOrDigit() && it.code < 128) it else '_' }.joinToString("").take(10)
@@ -165,9 +169,30 @@ object Shapefile {
     }
 }
 
-/** Pembaca Shapefile (.shp + .dbf opsional). Hanya koordinat WGS84 (lon/lat). */
+/** Membaca zona UTM dari isi file .prj. Hasil: (zona, selatan) atau null bila bukan UTM. */
+object ShpPrj {
+    fun utm(prj: String): Pair<Int, Boolean>? {
+        if (!prj.contains("PROJCS")) return null
+        Regex("UTM[_ ]?zone[_ ]?(\\d{1,2})\\s*([NS])", RegexOption.IGNORE_CASE).find(prj)?.let { m ->
+            val z = m.groupValues[1].toInt()
+            if (z in 1..60) return Pair(z, m.groupValues[2].equals("S", true))
+        }
+        if (!prj.contains("Transverse_Mercator", true)) return null
+        fun param(name: String) = Regex("PARAMETER\\[\"$name\",\\s*(-?[\\d.]+)", RegexOption.IGNORE_CASE).find(prj)?.groupValues?.get(1)?.toDoubleOrNull()
+        val k = param("scale_factor") ?: return null
+        val fe = param("false_easting") ?: return null
+        val cm = param("central_meridian") ?: return null
+        val fn = param("false_northing") ?: 0.0
+        if (Math.abs(k - 0.9996) > 1e-6 || Math.abs(fe - 500000.0) > 1.0) return null
+        val z = (cm + 183.0) / 6.0
+        if (Math.abs(z - Math.round(z)) > 1e-6 || z < 1 || z > 60) return null
+        return Pair(Math.round(z).toInt(), fn > 1000000.0)
+    }
+}
+
+/** Pembaca Shapefile (.shp + .dbf opsional). Koordinat WGS84 (lon/lat), atau UTM bila zona diberikan. */
 object ShpReader {
-    fun parse(shp: ByteArray, dbf: ByteArray?): List<RawFeature> {
+    fun parse(shp: ByteArray, dbf: ByteArray?, utm: Pair<Int, Boolean>? = null): List<RawFeature> {
         val b = ByteBuffer.wrap(shp)
         if (shp.size < 100) throw IllegalStateException("File .shp rusak")
         b.order(ByteOrder.BIG_ENDIAN)
@@ -185,7 +210,13 @@ object ShpReader {
             val type = b.getInt(start)
             val (nm, notes) = attrs.getOrNull(idx) ?: Pair("", "")
             val label = if (nm.isNotBlank()) nm else "Fitur ${idx + 1}"
-            fun pt(off: Int) = Pt(b.getDouble(off + 8), b.getDouble(off))
+            fun pt(off: Int): Pt {
+                val x = b.getDouble(off)
+                val y = b.getDouble(off + 8)
+                if (utm == null) return Pt(y, x)
+                val ll = GeoMath.utmToLatLon(utm.first, utm.second, x, y)
+                return Pt(ll.first, ll.second)
+            }
             when (type) {
                 1, 11, 21 -> out += RawFeature(label, notes, FType.POINT, listOf(pt(start + 4)))
                 8, 18, 28 -> {
