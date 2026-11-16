@@ -143,6 +143,8 @@ fun MapApp() {
     var showProjects by remember { mutableStateOf(false) }
     var showGoto by remember { mutableStateOf(false) }
     var showOsm by remember { mutableStateOf(false) }
+    var statusFresh by remember { mutableStateOf(false) }
+    LaunchedEffect(st.status) { statusFresh = true; kotlinx.coroutines.delay(5000); statusFresh = false }
     var showSaveDraft by remember { mutableStateOf(false) }
     var toolsMenu by remember { mutableStateOf(false) }
     var dataMenu by remember { mutableStateOf(false) }
@@ -239,7 +241,6 @@ fun MapApp() {
         // ---------- Peta (layar penuh) ----------
         if (st.osmMode) {
             OsmMapView(st)
-            Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFFD81B60), modifier = Modifier.align(Alignment.Center).size(20.dp))
         } else if (st.bitmap != null) {
             MapCanvas(st)
         } else {
@@ -296,7 +297,7 @@ fun MapApp() {
             }
             Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if ((st.status.isNotBlank() && st.bitmap == null && !st.osmMode) || st.navInfo() != null) {
+                    if ((st.status.isNotBlank() && (statusFresh || (st.bitmap == null && !st.osmMode))) || st.navInfo() != null) {
                         Surface(
                             Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
@@ -335,7 +336,7 @@ fun MapApp() {
                     Column(Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         LocateButton(st.follow) { st.toggleFollow() }
                         FloatingActionButton(
-                            onClick = { if (st.osmMode) st.pendingPoint = st.osmCenter?.invoke() else st.changeMode(Mode.ADD_POINT) },
+                            onClick = { st.changeMode(Mode.ADD_POINT) },
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ) { Icon(Icons.Filled.Add, contentDescription = "Tambah titik") }
@@ -416,7 +417,7 @@ fun MapApp() {
                     NavItem(Icons.Filled.Place, "Peta", Modifier.weight(1f)) { showMaps = true }
                     NavItem(Icons.Filled.List, "Layer", Modifier.weight(1f)) { showLayers = true }
                     Box(Modifier.weight(1f)) {
-                        NavItem(Icons.Filled.Build, "Alat", Modifier.fillMaxWidth(), enabled = st.bitmap != null && !st.osmMode) { toolsMenu = true }
+                        NavItem(Icons.Filled.Build, "Alat", Modifier.fillMaxWidth(), enabled = st.bitmap != null || st.osmMode) { toolsMenu = true }
                         DropdownMenu(expanded = toolsMenu, onDismissRequest = { toolsMenu = false }) {
                             DropdownMenuItem(text = { Text("Format koordinat: $fmtLabel") }, onClick = { toolsMenu = false; st.cycleCoordFormat() })
             DropdownMenuItem(text = { Text("Tambah titik (tap peta)") }, onClick = { toolsMenu = false; st.changeMode(Mode.ADD_POINT) })
@@ -426,11 +427,13 @@ fun MapApp() {
             DropdownMenuItem(text = { Text("Ukur luas / gambar area") }, onClick = { toolsMenu = false; st.changeMode(Mode.MEASURE_AREA) })
             DropdownMenuItem(text = { Text("Penggaris (2 titik)") }, onClick = { toolsMenu = false; st.changeMode(Mode.RULER) })
             DropdownMenuItem(text = { Text("Satuan ukur: ${GeoMath.UNIT_NAMES[st.store.unit]}") }, onClick = { toolsMenu = false; showUnit = true })
-            DropdownMenuItem(
-                text = { Text(if (st.rotateLocked) "Putar peta: terkunci" else "Putar peta: bebas") },
-                onClick = { toolsMenu = false; st.toggleRotateLock() },
-            )
-            DropdownMenuItem(text = { Text("Utara ke atas") }, onClick = { toolsMenu = false; st.resetNorth() })
+            if (!st.osmMode) {
+                DropdownMenuItem(
+                    text = { Text(if (st.rotateLocked) "Putar peta: terkunci" else "Putar peta: bebas") },
+                    onClick = { toolsMenu = false; st.toggleRotateLock() },
+                )
+                DropdownMenuItem(text = { Text("Utara ke atas") }, onClick = { toolsMenu = false; st.resetNorth() })
+            }
             DropdownMenuItem(
                 text = { Text(if (st.recording) "Stop rekam track" else "Rekam track GPS") },
                 onClick = { toolsMenu = false; if (st.recording) st.stopRecording() else st.startRecording() },
@@ -451,8 +454,10 @@ fun MapApp() {
                 text = { Text(if (st.store.bgGeofence) "Geofence di latar belakang: aktif" else "Geofence di latar belakang: mati") },
                 onClick = { toolsMenu = false; st.toggleBgGeofence() },
             )
-            DropdownMenuItem(text = { Text("Kalibrasi manual") }, onClick = { toolsMenu = false; st.changeMode(Mode.CALIBRATE) })
-            DropdownMenuItem(text = { Text("Hapus kalibrasi manual") }, onClick = { toolsMenu = false; st.setManual(emptyList()) })
+            if (!st.osmMode) {
+                DropdownMenuItem(text = { Text("Kalibrasi manual") }, onClick = { toolsMenu = false; st.changeMode(Mode.CALIBRATE) })
+                DropdownMenuItem(text = { Text("Hapus kalibrasi manual") }, onClick = { toolsMenu = false; st.setManual(emptyList()) })
+            }
             if (st.navTarget != null) {
                 DropdownMenuItem(text = { Text("Berhenti navigasi") }, onClick = { toolsMenu = false; st.navTarget = null })
             }

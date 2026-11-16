@@ -3,6 +3,13 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.10 (2026-11-16)
+- Peta jalan kini punya alat lengkap: tambah titik dengan tap, ukur jarak/garis, ukur luas/area, penggaris, pindah titik, ke koordinat, dan navigasi (garis ke tujuan).
+- Peta jalan: ketuk fitur untuk membuka dan mengeditnya; ketuk tempat kosong untuk melihat koordinat.
+- Peta jalan: garis skala, dan jejak yang sedang direkam tergambar langsung.
+- Tombol (+) di peta jalan sekarang sama seperti peta PDF (tap peta untuk menaruh titik).
+- Pesan status (mis. "GPS belum dapat sinyal") kini muncul beberapa detik di atas peta, lalu hilang sendiri.
+
 ## v0.9.1 (2026-11-12)
 - Tombol pusatkan ala Google Maps di kanan bawah (di atas tombol +): ketuk untuk ke posisi GPS dan mengikuti; geser peta untuk berhenti mengikuti. Berlaku di peta jalan dan peta PDF.
 - Peta jalan: titik posisi kini berukuran tetap dan kecil (tidak membesar saat zoom out), dengan kerucut arah hadap dan lingkaran akurasi.

@@ -205,10 +205,81 @@ private fun osmPaint(color: Int, width: Float, style: Style): Paint =
     }
 
 /** Titik posisi GPS: lingkaran akurasi, kerucut arah hadap, titik biru berukuran tetap di layar. */
-private class GpsLayer(val dens: Float) : org.mapsforge.map.layer.Layer() {
+private class GpsLayer(val dens: Float, val onTapGeo: (Double, Double, Double) -> Unit) : org.mapsforge.map.layer.Layer() {
     @Volatile var pos: LatLong? = null
     @Volatile var acc = 0f
     @Volatile var heading: Float? = null
+    @Volatile var draft: List<Pt> = emptyList()
+    @Volatile var draftArea = false
+    @Volatile var ruler: List<Pt> = emptyList()
+    @Volatile var track: List<Pt> = emptyList()
+    @Volatile var gotoPt: Pt? = null
+    @Volatile var navTo: Pt? = null
+    @Volatile private var lastZoom: Byte = 12
+    private val orange = 0xFFFF6D00.toInt()
+    private val draftLine = osmPaint(orange, 3f * dens, Style.STROKE)
+    private val draftFill = osmPaint(0x33FF6D00, 0f, Style.FILL)
+    private val draftDot = osmPaint(orange, 0f, Style.FILL)
+    private val rulerUnder = osmPaint(0xFFFFFFFF.toInt(), 5f * dens, Style.STROKE)
+    private val rulerLine = osmPaint(0xFF212121.toInt(), 2.5f * dens, Style.STROKE)
+    private val trackLine = osmPaint(0xFFE53935.toInt(), 3.5f * dens, Style.STROKE)
+    private val navLine = osmPaint(0xFF1A73E8.toInt(), 2f * dens, Style.STROKE)
+    private val gotoLine = osmPaint(0xFFD81B60.toInt(), 2.5f * dens, Style.STROKE)
+
+    override fun onTap(tapLatLong: LatLong, layerXY: Point?, tapXY: Point?): Boolean {
+        val mapSize = MercatorProjection.getMapSize(lastZoom, displayModel.tileSize)
+        val res = MercatorProjection.calculateGroundResolution(tapLatLong.latitude, mapSize)
+        onTapGeo(tapLatLong.latitude, tapLatLong.longitude, 24.0 * dens * res)
+        return true
+    }
+
+    private fun line(canvas: org.mapsforge.core.graphics.Canvas, pts: List<Pt>, close: Boolean, mapSize: Long, tl: Point, paint: Paint) {
+        if (pts.size < 2) return
+        val path = AndroidGraphicFactory.INSTANCE.createPath()
+        pts.forEachIndexed { i, p ->
+            val x = (MercatorProjection.longitudeToPixelX(p.lon, mapSize) - tl.x).toFloat()
+            val y = (MercatorProjection.latitudeToPixelY(p.lat, mapSize) - tl.y).toFloat()
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        if (close) path.close()
+        canvas.drawPath(path, paint)
+    }
+
+    private fun dots(canvas: org.mapsforge.core.graphics.Canvas, pts: List<Pt>, mapSize: Long, tl: Point) {
+        for (p in pts) {
+            val x = (MercatorProjection.longitudeToPixelX(p.lon, mapSize) - tl.x).toInt()
+            val y = (MercatorProjection.latitudeToPixelY(p.lat, mapSize) - tl.y).toInt()
+            canvas.drawCircle(x, y, (5f * dens).toInt(), white)
+            canvas.drawCircle(x, y, (3.5f * dens).toInt(), draftDot)
+        }
+    }
+
+    private fun extras(canvas: org.mapsforge.core.graphics.Canvas, mapSize: Long, tl: Point) {
+        line(canvas, track, false, mapSize, tl, trackLine)
+        val d = draft
+        if (d.isNotEmpty()) {
+            if (draftArea && d.size >= 3) line(canvas, d, true, mapSize, tl, draftFill)
+            line(canvas, d, draftArea && d.size >= 3, mapSize, tl, draftLine)
+            dots(canvas, d, mapSize, tl)
+        }
+        val r = ruler
+        if (r.isNotEmpty()) {
+            line(canvas, r, false, mapSize, tl, rulerUnder)
+            line(canvas, r, false, mapSize, tl, rulerLine)
+            dots(canvas, r, mapSize, tl)
+        }
+        val n = navTo
+        val p = pos
+        if (n != null && p != null) line(canvas, listOf(Pt(p.latitude, p.longitude), n), false, mapSize, tl, navLine)
+        gotoPt?.let { g ->
+            val x = (MercatorProjection.longitudeToPixelX(g.lon, mapSize) - tl.x).toInt()
+            val y = (MercatorProjection.latitudeToPixelY(g.lat, mapSize) - tl.y).toInt()
+            val k = (11f * dens).toInt()
+            canvas.drawLine(x - k, y, x + k, y, gotoLine)
+            canvas.drawLine(x, y - k, x, y + k, gotoLine)
+            canvas.drawCircle(x, y, (k * 0.65f).toInt(), gotoLine)
+        }
+    }
     private val accFill = osmPaint(0x241A73E8, 0f, Style.FILL)
     private val accStroke = osmPaint(0x731A73E8, 1.5f * dens, Style.STROKE)
     private val cone = osmPaint(0x4D1A73E8, 0f, Style.FILL)
@@ -217,8 +288,10 @@ private class GpsLayer(val dens: Float) : org.mapsforge.map.layer.Layer() {
     private val blue = osmPaint(0xFF1A73E8.toInt(), 0f, Style.FILL)
 
     override fun draw(boundingBox: BoundingBox, zoomLevel: Byte, canvas: org.mapsforge.core.graphics.Canvas, topLeftPoint: Point) {
-        val p = pos ?: return
+        lastZoom = zoomLevel
         val mapSize = MercatorProjection.getMapSize(zoomLevel, displayModel.tileSize)
+        extras(canvas, mapSize, topLeftPoint)
+        val p = pos ?: return
         val x = (MercatorProjection.longitudeToPixelX(p.longitude, mapSize) - topLeftPoint.x).toFloat()
         val y = (MercatorProjection.latitudeToPixelY(p.latitude, mapSize) - topLeftPoint.y).toFloat()
         val r = 5.5f * dens
@@ -262,7 +335,10 @@ fun OsmMapView(st: AppState) {
         val mv = MapView(ctx)
         mv.isClickable = true
         mv.setBuiltInZoomControls(false)
-        mv.mapScaleBar.isVisible = false
+        mv.mapScaleBar.isVisible = true
+        mv.mapScaleBar.scaleBarPosition = org.mapsforge.map.scalebar.MapScaleBar.ScaleBarPosition.BOTTOM_LEFT
+        mv.mapScaleBar.marginVertical = (178 * dens).toInt()
+        mv.mapScaleBar.marginHorizontal = (14 * dens).toInt()
         mv.setZoomLevelMin(5.toByte())
         mv.setZoomLevelMax(21.toByte())
         val cache = AndroidUtil.createTileCache(
@@ -302,6 +378,12 @@ fun OsmMapView(st: AppState) {
     val loc = st.loc
     val follow = st.follow
     val heading = st.heading
+    val draft = st.draft
+    val mode = st.mode
+    val ruler = st.ruler
+    val track = st.trackPts
+    val gotoPt = st.gotoPt
+    val navTo = st.navFeature()?.let { st.target(it) }
     AndroidView(factory = { holder.mapView }, modifier = Modifier.fillMaxSize(), update = { mv ->
         val layers = mv.layerManager.layers
         if (holder.storeRef !== store) {
@@ -331,7 +413,7 @@ fun OsmMapView(st: AppState) {
             holder.storeRef = store
             // titik GPS selalu di atas fitur
             holder.gps?.let { layers.remove(it, false) }
-            val g = holder.gps ?: GpsLayer(dens)
+            val g = holder.gps ?: GpsLayer(dens) { la, lo, tol -> st.onTapGeo(la, lo, tol) }
             layers.add(g, false)
             holder.gps = g
             mv.layerManager.redrawLayers()
@@ -346,6 +428,12 @@ fun OsmMapView(st: AppState) {
                 holder.locRef = loc
             }
             g.heading = heading
+            g.draft = draft
+            g.draftArea = mode == Mode.MEASURE_AREA
+            g.ruler = ruler
+            g.track = track
+            g.gotoPt = gotoPt
+            g.navTo = navTo
             g.requestRedraw()
         }
     })

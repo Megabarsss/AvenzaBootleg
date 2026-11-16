@@ -372,6 +372,13 @@ class AppState(val ctx: Context) {
         val nums = Regex("-?\\d+(?:\\.\\d+)?").findAll(text).map { it.value.toDouble() }.toList()
         val t = transform
         if (nums.size < 2 || Math.abs(nums[0]) > 90 || Math.abs(nums[1]) > 180) { status = "Format: lintang, bujur (mis. -6.2, 106.8)"; return }
+        if (osmMode) {
+            val q = Pt(nums[0], nums[1])
+            gotoPt = q; follow = false
+            osmGoto?.invoke(q)
+            status = "Ke " + GeoMath.fmtCoord(q.lat, q.lon, store.coordFormat)
+            return
+        }
         if (t == null) { status = "Peta belum ter-georeferensi"; return }
         val p = Pt(nums[0], nums[1])
         gotoPt = p
@@ -487,12 +494,17 @@ class AppState(val ctx: Context) {
     fun centerOnMe() {
         val t = transform
         val l = loc
+        if (osmMode) {
+            if (l == null) status = "GPS belum dapat sinyal" else osmGoto?.invoke(Pt(l.latitude, l.longitude))
+            return
+        }
         if (t == null || l == null) { status = "Perlu georeferensi dan sinyal GPS"; return }
         val o = t.off(Pt(l.latitude, l.longitude))
         centerOn(o.x.toDouble(), o.y.toDouble())
     }
 
     fun centerOnFeature(f: Feature) {
+        if (osmMode) { follow = false; osmGoto?.invoke(target(f)); return }
         val t = transform ?: return
         val o = t.off(target(f))
         centerOn(o.x.toDouble(), o.y.toDouble())
@@ -546,7 +558,8 @@ class AppState(val ctx: Context) {
     // =============== mode & tap ===============
 
     fun changeMode(m: Mode) {
-        if (m != Mode.NONE && m != Mode.CALIBRATE && transform == null) {
+        if (osmMode && m == Mode.CALIBRATE) return
+        if (m != Mode.NONE && m != Mode.CALIBRATE && transform == null && !osmMode) {
             status = "Georeferensi belum siap. Kalibrasi ≥3 titik dulu."
             return
         }
@@ -556,10 +569,17 @@ class AppState(val ctx: Context) {
     }
 
     fun onTap(p: Offset) {
-        val t = transform
-        val ll = t?.toLatLon(p.x.toDouble(), p.y.toDouble())
+        if (mode == Mode.CALIBRATE) { pendingCalib = p; return }
+        val ll = transform?.toLatLon(p.x.toDouble(), p.y.toDouble())
+        tapLL(ll) { hitTest(p.x, p.y) }
+    }
+
+    /** Tap di peta jalan (koordinat geografis langsung); tolM = toleransi sentuh dalam meter. */
+    fun onTapGeo(lat: Double, lon: Double, tolM: Double) = tapLL(Pair(lat, lon)) { hitTestGeo(lat, lon, tolM) }
+
+    private fun tapLL(ll: Pair<Double, Double>?, hit: () -> Feature?) {
         when (mode) {
-            Mode.CALIBRATE -> pendingCalib = p
+            Mode.CALIBRATE -> {}
             Mode.ADD_POINT -> if (ll != null) pendingPoint = Pt(ll.first, ll.second)
             Mode.MEASURE_LINE, Mode.MEASURE_AREA -> if (ll != null) draft = draft + Pt(ll.first, ll.second)
             Mode.MOVE -> if (ll != null) {
@@ -572,11 +592,32 @@ class AppState(val ctx: Context) {
             }
             Mode.RULER -> if (ll != null) ruler = if (ruler.size >= 2) listOf(Pt(ll.first, ll.second)) else ruler + Pt(ll.first, ll.second)
             Mode.NONE -> {
-                val hit = hitTest(p.x, p.y)
-                if (hit != null) selectedId = hit.id
+                val h = hit()
+                if (h != null) selectedId = h.id
                 else if (ll != null) status = "Koordinat: " + GeoMath.fmtCoord(ll.first, ll.second, store.coordFormat)
             }
         }
+    }
+
+    private fun hitTestGeo(lat: Double, lon: Double, tolM: Double): Feature? {
+        val kx = 111320.0 * Math.cos(Math.toRadians(lat))
+        val ky = 110540.0
+        var best: Feature? = null
+        var bestD = tolM
+        val vis = store.layers.filter { it.visible }.map { it.id }.toSet()
+        for (f in store.features) {
+            if (f.layerId !in vis || f.pts.isEmpty()) continue
+            val xy = f.pts.map { Pair((it.lon - lon) * kx, (it.lat - lat) * ky) }
+            var d = Double.MAX_VALUE
+            if (f.type == FType.POINT) {
+                d = hypot(xy[0].first, xy[0].second)
+            } else {
+                for (i in 0 until xy.size - 1) d = min(d, segDist(0.0, 0.0, xy[i].first, xy[i].second, xy[i + 1].first, xy[i + 1].second))
+                if (f.type == FType.AREA && xy.size >= 3) d = min(d, segDist(0.0, 0.0, xy.last().first, xy.last().second, xy[0].first, xy[0].second))
+            }
+            if (d < bestD) { bestD = d; best = f }
+        }
+        return best
     }
 
     private fun segDist(px: Double, py: Double, ax: Double, ay: Double, bx: Double, by: Double): Double {
