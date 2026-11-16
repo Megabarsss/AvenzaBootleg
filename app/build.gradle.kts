@@ -11,8 +11,8 @@ android {
         applicationId = "id.pdfmaps"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.11"
+        versionCode = 14
+        versionName = "0.12"
     }
     signingConfigs {
         // Kunci tetap supaya tiap versi bisa dipasang di atas versi sebelumnya tanpa uninstall

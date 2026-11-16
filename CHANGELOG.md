@@ -3,6 +3,13 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.12 (2026-11-16)
+- Kamera bercap koordinat: Alat > "Kamera: foto bercap koordinat". Foto diberi cap koordinat, akurasi, ketinggian, arah hadap, waktu, dan nama proyek, lalu otomatis jadi titik di posisi GPS (EXIF GPS ikut terisi).
+- Simpan foto ke galeri dari dialog fitur (Pictures/PdfMaps, Android 10+); foto hasil impor diberi cap dulu.
+- Laporan PDF: Data > "Laporan PDF" berisi ringkasan, peta ikhtisar bernomor, tabel fitur, dan halaman foto.
+- Edit bentuk garis/area: geser, sisip, dan hapus titik sudut (dialog fitur > "Edit bentuk"), di peta PDF maupun peta jalan.
+- Daftar fitur di dialog Layer kini menampilkan jarak dari posisi Anda.
+
 ## v0.11 (2026-11-16)
 - Shapefile UTM langsung terbaca (zona dibaca dari file .prj, datum WGS84). Proyeksi lain masih perlu diubah ke WGS84 dulu.
 - Ekspor Shapefile kini membawa kolom COLOR (warna fitur, format #RRGGBB).

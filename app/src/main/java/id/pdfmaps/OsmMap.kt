@@ -215,6 +215,9 @@ private class GpsLayer(val dens: Float, val onTapGeo: (Double, Double, Double) -
     @Volatile var track: List<Pt> = emptyList()
     @Volatile var gotoPt: Pt? = null
     @Volatile var navTo: Pt? = null
+    @Volatile var editPts: List<Pt> = emptyList()
+    @Volatile var editSel: Int? = null
+    private val selDot = osmPaint(0xFFE53935.toInt(), 0f, Style.FILL)
     @Volatile private var lastZoom: Byte = 12
     private val orange = 0xFFFF6D00.toInt()
     private val draftLine = osmPaint(orange, 3f * dens, Style.STROKE)
@@ -267,6 +270,18 @@ private class GpsLayer(val dens: Float, val onTapGeo: (Double, Double, Double) -
             line(canvas, r, false, mapSize, tl, rulerUnder)
             line(canvas, r, false, mapSize, tl, rulerLine)
             dots(canvas, r, mapSize, tl)
+        }
+        val e = editPts
+        if (e.isNotEmpty()) {
+            dots(canvas, e, mapSize, tl)
+            editSel?.let { i ->
+                e.getOrNull(i)?.let { q ->
+                    val x = (MercatorProjection.longitudeToPixelX(q.lon, mapSize) - tl.x).toInt()
+                    val y = (MercatorProjection.latitudeToPixelY(q.lat, mapSize) - tl.y).toInt()
+                    canvas.drawCircle(x, y, (8f * dens).toInt(), white)
+                    canvas.drawCircle(x, y, (6f * dens).toInt(), selDot)
+                }
+            }
         }
         val n = navTo
         val p = pos
@@ -384,6 +399,8 @@ fun OsmMapView(st: AppState) {
     val track = st.trackPts
     val gotoPt = st.gotoPt
     val navTo = st.navFeature()?.let { st.target(it) }
+    val editPts = if (mode == Mode.EDIT) st.editFeature?.pts ?: emptyList() else emptyList()
+    val editSel = st.editIdx
     AndroidView(factory = { holder.mapView }, modifier = Modifier.fillMaxSize(), update = { mv ->
         val layers = mv.layerManager.layers
         if (holder.storeRef !== store) {
@@ -434,6 +451,8 @@ fun OsmMapView(st: AppState) {
             g.track = track
             g.gotoPt = gotoPt
             g.navTo = navTo
+            g.editPts = editPts
+            g.editSel = editSel
             g.requestRedraw()
         }
     })

@@ -45,7 +45,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
-enum class Mode { NONE, CALIBRATE, ADD_POINT, MEASURE_LINE, MEASURE_AREA, RULER, MOVE }
+enum class Mode { NONE, CALIBRATE, ADD_POINT, MEASURE_LINE, MEASURE_AREA, RULER, MOVE, EDIT }
 
 class LoadedMap(
     val bitmap: Bitmap,
@@ -162,6 +162,9 @@ class AppState(val ctx: Context) {
     var pendingCalib by mutableStateOf<Offset?>(null)
     var pendingPoint by mutableStateOf<Pt?>(null)
     var moveId by mutableStateOf<String?>(null)
+    var editId by mutableStateOf<String?>(null)     // garis/area yang titik sudutnya sedang diedit
+    var editIdx by mutableStateOf<Int?>(null)
+    private var cameraFile: String? = null
     var follow by mutableStateOf(false)
     var gotoPt by mutableStateOf<Pt?>(null)
     var osmMode by mutableStateOf(false)      // peta jalan offline (OpenStreetMap)
@@ -677,6 +680,7 @@ class AppState(val ctx: Context) {
                 moveId = null; mode = Mode.NONE
             }
             Mode.RULER -> if (ll != null) ruler = if (ruler.size >= 2) listOf(Pt(ll.first, ll.second)) else ruler + Pt(ll.first, ll.second)
+            Mode.EDIT -> if (ll != null) editTap(Pt(ll.first, ll.second))
             Mode.NONE -> {
                 val h = hit()
                 if (h != null) selectedId = h.id
@@ -782,6 +786,142 @@ class AppState(val ctx: Context) {
 
     fun updateFeature(f: Feature) =
         update { s -> s.copy(features = s.features.map { if (it.id == f.id) f else it }) }
+
+    // ----- edit titik sudut garis/area -----
+
+    val editFeature: Feature? get() = store.features.firstOrNull { it.id == editId }
+
+    fun startEdit(id: String) {
+        editId = id; editIdx = null; mode = Mode.EDIT; draft = emptyList(); ruler = emptyList()
+        status = "Edit bentuk: tap dekat titik sudut untuk memilih, lalu tap lokasi barunya"
+    }
+
+    private fun editTap(p: Pt) {
+        val f = editFeature ?: return
+        val i = editIdx
+        if (i == null) {
+            editIdx = f.pts.indices.minByOrNull { GeoMath.dist(f.pts[it], p) }
+        } else {
+            updateFeature(f.copy(pts = f.pts.mapIndexed { k, q -> if (k == i) Pt(p.lat, p.lon, q.ele, q.t) else q }))
+            editIdx = null
+        }
+    }
+
+    fun editDelete() {
+        val f = editFeature ?: return
+        val i = editIdx ?: return
+        val minPts = if (f.type == FType.AREA) 3 else 2
+        if (f.pts.size <= minPts) { status = "Tidak bisa dihapus: minimal $minPts titik"; return }
+        updateFeature(f.copy(pts = f.pts.filterIndexed { k, _ -> k != i }))
+        editIdx = null
+    }
+
+    /** Sisipkan titik baru di tengah antara titik terpilih dan titik berikutnya. */
+    fun editInsert() {
+        val f = editFeature ?: return
+        val i = editIdx ?: return
+        val n = f.pts.size
+        val j = if (i + 1 < n) i + 1 else if (f.type == FType.AREA) 0 else i - 1
+        if (j < 0) return
+        val a = f.pts[i]; val b = f.pts[j]
+        val mid = Pt((a.lat + b.lat) / 2, (a.lon + b.lon) / 2)
+        val at = if (j == i - 1) i else i + 1
+        updateFeature(f.copy(pts = f.pts.take(at) + mid + f.pts.drop(at)))
+        editIdx = at
+    }
+
+    fun finishEdit() { mode = Mode.NONE; editId = null; editIdx = null }
+
+    // ----- kamera bercap koordinat -----
+
+    /** Siapkan file foto baru; hasil: nama file di filesDir/photos, atau null bila GPS belum siap. */
+    fun prepareCamera(): File? {
+        if (loc == null) { status = "GPS belum dapat sinyal, foto tidak bisa diberi koordinat"; return null }
+        val dir = File(ctx.filesDir, "photos").apply { mkdirs() }
+        val name = "cam_" + UUID.randomUUID().toString() + ".jpg"
+        cameraFile = name
+        return File(dir, name)
+    }
+
+    suspend fun finishCamera(ok: Boolean) {
+        val name = cameraFile ?: return
+        cameraFile = null
+        val f = File(ctx.filesDir, "photos/$name")
+        val l = loc
+        if (!ok || !f.exists() || f.length() == 0L || l == null) { f.delete(); if (ok) status = "Foto gagal disimpan"; return }
+        val now = Date()
+        val title = "Foto " + SimpleDateFormat("yyyy-MM-dd HH.mm.ss", Locale.getDefault()).format(now)
+        val h = heading
+        val lines = listOfNotNull(
+            GeoMath.fmtCoord(l.latitude, l.longitude, store.coordFormat),
+            (if (store.coordFormat != 0) GeoMath.fmtCoord(l.latitude, l.longitude, 0) + " · " else "") + "±%.0f m".format(l.accuracy) +
+                (if (l.hasAltitude()) " · %.0f m dpl".format(l.altitude) else ""),
+            h?.let { "Arah hadap: %.0f° (%s)".format(it, GeoMath.compass8(it.toDouble())) },
+            SimpleDateFormat("d MMM yyyy HH:mm:ss", Locale("id")).format(now) + " · " + activeProject.name,
+        )
+        val done = withContext(Dispatchers.IO) { PhotoStamp.stamp(f, f, lines, l.latitude, l.longitude) }
+        addFeature(
+            Feature(
+                layerId = activeLayer.id, type = FType.POINT, name = title, photo = name,
+                pts = listOf(Pt(l.latitude, l.longitude, if (l.hasAltitude()) l.altitude else Double.NaN, l.time)),
+                notes = h?.let { "Arah hadap %.0f°".format(it) } ?: "",
+            ),
+        )
+        status = if (done) "Foto bercap koordinat tersimpan sebagai titik" else "Foto tersimpan sebagai titik (cap gagal ditulis)"
+    }
+
+    /** Salin foto fitur ke Galeri (Pictures/PdfMaps); foto impor diberi cap dulu. */
+    suspend fun savePhotoToGallery(f: Feature) {
+        val name = f.photo ?: return
+        if (android.os.Build.VERSION.SDK_INT < 29) { status = "Simpan ke galeri butuh Android 10 ke atas"; return }
+        try {
+            val src = File(ctx.filesDir, "photos/$name")
+            val ok = withContext(Dispatchers.IO) {
+                var file = src
+                if (!name.startsWith("cam_")) {
+                    val tmp = File(ctx.cacheDir, "stamp_$name")
+                    val p = f.pts[0]
+                    val lines = listOf(f.name, GeoMath.fmtCoord(p.lat, p.lon, store.coordFormat), activeProject.name)
+                    if (PhotoStamp.stamp(src, tmp, lines, p.lat, p.lon)) file = tmp
+                }
+                val cv = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "PdfMaps_" + f.name.replace(Regex("[^A-Za-z0-9_.-]+"), "_") + ".jpg")
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PdfMaps")
+                }
+                val uri = ctx.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+                if (uri == null) false else {
+                    ctx.contentResolver.openOutputStream(uri)?.use { o -> file.inputStream().use { it.copyTo(o) } }
+                    if (file !== src) file.delete()
+                    true
+                }
+            }
+            status = if (ok) "Foto disimpan ke Galeri (Pictures/PdfMaps)" else "Gagal menyimpan ke galeri"
+        } catch (ex: Exception) {
+            status = "Gagal menyimpan ke galeri: ${ex.message}"
+        }
+    }
+
+    /** Laporan PDF dari fitur pada layer yang terlihat. */
+    suspend fun exportReport(uri: Uri?) {
+        if (uri == null) return
+        try {
+            status = "Menyusun laporan…"
+            val vis = store.layers.filter { it.visible }
+            val ids = vis.map { it.id }.toSet()
+            val feats = store.features.filter { it.layerId in ids && it.pts.isNotEmpty() }
+            val t = transform
+            val bmp = if (!osmMode && t != null) bitmap else null
+            val toMap: ((Pt) -> Pair<Float, Float>)? = if (bmp != null && t != null) { p -> t.off(p).let { Pair(it.x, it.y) } } else null
+            val name = activeProject.name
+            val fmt = store.coordFormat
+            val bytes = withContext(Dispatchers.Default) { Report.build(name, vis, feats, fmt, bmp, toMap, File(ctx.filesDir, "photos")) }
+            withContext(Dispatchers.IO) { ctx.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } }
+            status = "Laporan PDF dibuat (${feats.size} fitur)"
+        } catch (ex: Throwable) {
+            status = "Gagal membuat laporan: ${ex.message}"
+        }
+    }
 
     fun startMove(id: String) {
         moveId = id; mode = Mode.MOVE; draft = emptyList(); ruler = emptyList()

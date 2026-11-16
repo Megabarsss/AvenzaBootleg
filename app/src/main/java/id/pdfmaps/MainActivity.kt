@@ -214,6 +214,23 @@ fun MapApp() {
     val kmlOut = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { u ->
         scope.launch { st.exportTo(u, "kml") }
     }
+    val reportOut = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { u ->
+        scope.launch { st.exportReport(u) }
+    }
+    val cameraShot = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        scope.launch { st.finishCamera(ok) }
+    }
+    fun openCamera() {
+        val f = st.prepareCamera() ?: return
+        try {
+            cameraShot.launch(androidx.core.content.FileProvider.getUriForFile(ctx, "id.pdfmaps.files", f))
+        } catch (ex: Exception) {
+            st.status = "Kamera tidak bisa dibuka: ${ex.message}"
+        }
+    }
+    val cameraPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) openCamera() else st.status = "Izin kamera ditolak"
+    }
     val backupOut = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { u ->
         scope.launch { st.backupProject(u) }
     }
@@ -372,6 +389,7 @@ fun MapApp() {
                                 st.mode == Mode.CALIBRATE -> "Kalibrasi: tap titik di peta (manual: ${st.manualPoints.size}, min 3)"
                                 st.mode == Mode.ADD_POINT -> "Tap peta untuk menaruh titik"
                                 st.mode == Mode.MOVE -> "Tap peta untuk memindahkan titik"
+                                st.mode == Mode.EDIT -> st.editIdx?.let { "Titik ${it + 1} dipilih: tap lokasi barunya" } ?: "Edit bentuk: tap dekat titik sudut untuk memilihnya"
                                 st.mode == Mode.RULER -> st.rulerInfo()
                                 st.mode == Mode.MEASURE_LINE || st.mode == Mode.MEASURE_AREA ->
                                     st.draftInfo().ifBlank { "Tap peta untuk menambah titik" }
@@ -387,6 +405,11 @@ fun MapApp() {
                             when {
                                 st.mode == Mode.CALIBRATE || st.mode == Mode.ADD_POINT || st.mode == Mode.MOVE -> {
                                     TextButton(onClick = { st.mode = Mode.NONE; st.moveId = null }) { OneLine("Selesai") }
+                                }
+                                st.mode == Mode.EDIT -> {
+                                    TextButton(onClick = { st.editInsert() }, enabled = st.editIdx != null) { OneLine("Sisip titik") }
+                                    TextButton(onClick = { st.editDelete() }, enabled = st.editIdx != null) { OneLine("Hapus titik") }
+                                    TextButton(onClick = { st.finishEdit() }) { OneLine("Selesai") }
                                 }
                                 st.mode == Mode.RULER -> {
                                     TextButton(onClick = { st.setUnit((st.store.unit + 1) % 6) }) { OneLine("Satuan: ${GeoMath.unitSym(st.store.unit)}") }
@@ -444,6 +467,15 @@ fun MapApp() {
                 text = { Text(if (st.recording) "Stop rekam track" else "Rekam track GPS") },
                 onClick = { toolsMenu = false; if (st.recording) st.stopRecording() else st.startRecording() },
             )
+            DropdownMenuItem(
+                text = { Text("Kamera: foto bercap koordinat") },
+                onClick = {
+                    toolsMenu = false
+                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                        cameraPerm.launch(Manifest.permission.CAMERA)
+                    } else openCamera()
+                },
+            )
             DropdownMenuItem(text = { Text("Foto bergeotag → titik") }, onClick = { toolsMenu = false; photoPicker.launch(arrayOf("image/*")) })
             DropdownMenuItem(text = { Text("Pusatkan ke posisi saya") }, onClick = { toolsMenu = false; st.centerOnMe() })
             DropdownMenuItem(text = { Text("Ke koordinat…") }, onClick = { toolsMenu = false; showGoto = true })
@@ -476,6 +508,7 @@ fun MapApp() {
             DropdownMenuItem(text = { Text("Ekspor KML") }, onClick = { dataMenu = false; kmlOut.launch("fitur.kml") })
             DropdownMenuItem(text = { Text("Ekspor KMZ") }, onClick = { dataMenu = false; kmzOut.launch("fitur.kmz") })
             DropdownMenuItem(text = { Text("Ekspor Shapefile (ZIP)") }, onClick = { dataMenu = false; shpOut.launch("fitur_shp.zip") })
+            DropdownMenuItem(text = { Text("Laporan PDF") }, onClick = { dataMenu = false; reportOut.launch(st.activeProject.name.replace(Regex("[^A-Za-z0-9_-]+"), "_") + "_laporan.pdf") })
             DropdownMenuItem(text = { Text("Ekspor CSV") }, onClick = { dataMenu = false; csvOut.launch("fitur.csv") })
             DropdownMenuItem(text = { Text("Impor KML / KMZ / SHP / GPX / CSV / ZIP") }, onClick = { dataMenu = false; dataPicker.launch(arrayOf("*/*")) })
                         }
@@ -669,6 +702,18 @@ fun MapCanvas(st: AppState) {
                     drawPath(p, blue, style = Stroke(3f / z))
                 }
                 o.forEach { drawCircle(blue, r * 0.8f, it) }
+            }
+
+            // titik sudut yang sedang diedit
+            if (st.mode == Mode.EDIT) {
+                st.editFeature?.let { ef ->
+                    ef.pts.forEachIndexed { i, p ->
+                        val c = t.off(p)
+                        val sel = i == st.editIdx
+                        drawCircle(Color.White, r * (if (sel) 1.5f else 1.05f), c)
+                        drawCircle(if (sel) Color(0xFFE53935) else Color(0xFFFF6D00), r * (if (sel) 1.15f else 0.75f), c)
+                    }
+                }
             }
 
             // penggaris
@@ -1057,6 +1102,7 @@ fun LayersDialog(st: AppState, onClose: () -> Unit) {
     var renameLayerId by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var q by remember { mutableStateOf("") }
+    val here = st.loc?.let { Pt(it.latitude, it.longitude) }
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("Layer & fitur") },
@@ -1078,7 +1124,7 @@ fun LayersDialog(st: AppState, onClose: () -> Unit) {
                     }
                     st.store.features.filter { it.layerId == layer.id && (q.isBlank() || it.name.contains(q, true)) }.forEach { f ->
                         Text(
-                            "• ${f.name} (${typeLabel(f.type)})",
+                            "• ${f.name} (${typeLabel(f.type)})" + (here?.let { " · " + GeoMath.fmtDist(GeoMath.dist(it, st.target(f))) } ?: ""),
                             Modifier.fillMaxWidth()
                                 .clickable { st.selectedId = f.id; st.centerOnFeature(f); onClose() }
                                 .padding(start = 24.dp, top = 6.dp, bottom = 6.dp),
@@ -1189,6 +1235,7 @@ fun BtDialog(st: AppState, onClose: () -> Unit) {
 
 @Composable
 fun FeatureDialog(st: AppState, f: Feature, onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
     var name by remember(f.id) { mutableStateOf(f.name) }
     var notes by remember(f.id) { mutableStateOf(f.notes) }
     var attrs by remember(f.id) { mutableStateOf(f.attrs) }
@@ -1252,7 +1299,11 @@ fun FeatureDialog(st: AppState, f: Feature, onClose: () -> Unit) {
                         OutlinedButton(onClick = { st.startMove(f.id); onClose() }) { Text("Pindah (tap peta)") }
                         OutlinedButton(onClick = { st.moveToMe(f); onClose() }) { Text("Ke posisiku") }
                     } else {
+                        OutlinedButton(onClick = { st.startEdit(f.id); onClose() }) { Text("Edit bentuk") }
                         OutlinedButton(onClick = { st.convertFeature(f); onClose() }) { Text(if (f.type == FType.AREA) "Jadikan garis" else "Jadikan area") }
+                    }
+                    if (f.photo != null) {
+                        OutlinedButton(onClick = { scope.launch { st.savePhotoToGallery(f) }; onClose() }) { Text("Simpan foto ke galeri") }
                     }
                     OutlinedButton(onClick = { st.deleteFeature(f.id); onClose() }) { Text("Hapus") }
                 }
