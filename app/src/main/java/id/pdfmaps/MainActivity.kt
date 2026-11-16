@@ -145,6 +145,7 @@ fun MapApp() {
     var showOsm by remember { mutableStateOf(false) }
     var statusFresh by remember { mutableStateOf(false) }
     LaunchedEffect(st.status) { statusFresh = true; kotlinx.coroutines.delay(5000); statusFresh = false }
+    LaunchedEffect(Unit) { st.checkUpdate(false) }
     var showSaveDraft by remember { mutableStateOf(false) }
     var toolsMenu by remember { mutableStateOf(false) }
     var dataMenu by remember { mutableStateOf(false) }
@@ -333,6 +334,19 @@ fun MapApp() {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                             )
+                        }
+                    }
+                    st.updateInfo?.let { u ->
+                        Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(14.dp), shadowElevation = 3.dp) {
+                            Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    st.updatePct?.let { "Mengunduh v${u.version}… $it%" } ?: "Versi baru v${u.version} tersedia",
+                                    Modifier.weight(1f), color = MaterialTheme.colorScheme.onTertiaryContainer, fontWeight = FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                TextButton(onClick = { scope.launch { st.doUpdate() } }, enabled = st.updatePct == null) { OneLine("Perbarui") }
+                                TextButton(onClick = { st.updateInfo = null }, enabled = st.updatePct == null) { OneLine("Nanti") }
+                            }
                         }
                     }
                     st.alert?.let { msg ->
@@ -945,6 +959,7 @@ fun ProjectsDialog(st: AppState, scope: kotlinx.coroutines.CoroutineScope, onBac
                     OutlinedTextField(newName, { newName = it }, label = { Text("Nama proyek baru") }, singleLine = true, modifier = Modifier.weight(1f))
                     TextButton(onClick = { scope.launch { st.createProject(newName) }; onClose() }) { OneLine("Buat") }
                 }
+                TextButton(onClick = { scope.launch { st.checkUpdate(true) }; onClose() }) { OneLine("Periksa pembaruan aplikasi") }
                 Text("Cadangan", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onBackup) { OneLine("Cadangkan proyek ini") }

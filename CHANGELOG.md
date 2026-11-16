@@ -3,6 +3,10 @@
 Setiap pembaruan dicatat di sini. Versi aplikasi tampil di dialog Proyek (ketuk nama proyek di bar atas).
 Versi yang berjalan = `versionName` di `app/build.gradle.kts`.
 
+## v0.13 (2026-11-16)
+- Pembaruan dari dalam aplikasi: saat dibuka (dengan internet), aplikasi memeriksa versi terbaru dan menampilkan "Versi baru tersedia" dengan tombol Perbarui. APK diunduh dan pemasang dibuka otomatis; versi baru menimpa yang lama tanpa uninstall dan data tetap ada.
+- Pemeriksaan manual: ketuk nama proyek > "Periksa pembaruan aplikasi".
+
 ## v0.12 (2026-11-16)
 - Kamera bercap koordinat: Alat > "Kamera: foto bercap koordinat". Foto diberi cap koordinat, akurasi, ketinggian, arah hadap, waktu, dan nama proyek, lalu otomatis jadi titik di posisi GPS (EXIF GPS ikut terisi).
 - Simpan foto ke galeri dari dialog fitur (Pictures/PdfMaps, Android 10+); foto hasil impor diberi cap dulu.

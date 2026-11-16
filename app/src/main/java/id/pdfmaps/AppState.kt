@@ -165,6 +165,8 @@ class AppState(val ctx: Context) {
     var editId by mutableStateOf<String?>(null)     // garis/area yang titik sudutnya sedang diedit
     var editIdx by mutableStateOf<Int?>(null)
     private var cameraFile: String? = null
+    var updateInfo by mutableStateOf<Updater.Info?>(null)
+    var updatePct by mutableStateOf<Int?>(null)
     var follow by mutableStateOf(false)
     var gotoPt by mutableStateOf<Pt?>(null)
     var osmMode by mutableStateOf(false)      // peta jalan offline (OpenStreetMap)
@@ -831,6 +833,41 @@ class AppState(val ctx: Context) {
     }
 
     fun finishEdit() { mode = Mode.NONE; editId = null; editIdx = null }
+
+    // ----- pembaruan dari dalam aplikasi -----
+
+    val versionName: String
+        get() = try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
+
+    suspend fun checkUpdate(manual: Boolean) {
+        if (manual) status = "Memeriksa pembaruan…"
+        val info = try { withContext(Dispatchers.IO) { Updater.latest() } } catch (e: Exception) { null }
+        when {
+            info == null -> if (manual) status = "Tidak bisa memeriksa pembaruan (perlu internet)"
+            Updater.newer(info.version, versionName) -> { updateInfo = info; if (manual) status = "Versi baru v${info.version} tersedia" }
+            else -> { updateInfo = null; if (manual) status = "Sudah versi terbaru (v$versionName)" }
+        }
+    }
+
+    suspend fun doUpdate() {
+        val info = updateInfo ?: return
+        if (updatePct != null) return
+        try {
+            updatePct = 0
+            val id = withContext(Dispatchers.IO) { Updater.enqueue(ctx, info) }
+            while (true) {
+                kotlinx.coroutines.delay(700)
+                val p = withContext(Dispatchers.IO) { Updater.progress(ctx, id) }
+                if (p < 0) { status = "Unduhan pembaruan gagal"; break }
+                updatePct = p
+                if (p >= 100) { Updater.install(ctx, Updater.file(ctx, info)); break }
+            }
+        } catch (ex: Exception) {
+            status = "Gagal memperbarui: ${ex.message}"
+        } finally {
+            updatePct = null
+        }
+    }
 
     // ----- kamera bercap koordinat -----
 
